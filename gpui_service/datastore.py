@@ -36,6 +36,7 @@ class GPODataStore:
         self.lock = threading.RLock()
         self.sysvol_path = sysvol_path
         self.gpt_worker = None
+        self.gpprefs_worker = None
         try:
             from gptworker import GPTWorker
             self.gpt_worker = GPTWorker(sysvol_path)
@@ -43,6 +44,14 @@ class GPODataStore:
         except ImportError as exp:
             logger.warning(f"GPTWorker not available: {exp}")
             logger.warning("GPO policy file operations will be limited")
+
+        try:
+            from gpprefs import GPPrefsWorker
+            self.gpprefs_worker = GPPrefsWorker(sysvol_path)
+            logger.debug(f"GPPrefsWorker initialized with sysvol path: {sysvol_path}")
+        except ImportError as exp:
+            logger.warning(f"GPPrefsWorker not available: {exp}")
+            logger.warning("Group Policy Preferences operations will be limited")
 
     def load_from_directory(self, directory_path='/usr/share/PolicyDefinitions'):
         """Load ADMX policy definitions from directory"""
@@ -447,6 +456,90 @@ class GPODataStore:
 
             return []
 
+    def save_preferences(self, json_data):
+        """
+        Save Group Policy Preferences from JSON data
+
+        Args:
+            json_data: JSON string or dict containing preferences
+
+        Returns:
+            dict with results
+        """
+        if self.gpprefs_worker is None:
+            logger.error("GPPrefsWorker not available")
+            return {'success': False, 'message': 'GPPrefsWorker not available'}
+
+        try:
+            result = self.gpprefs_worker.save_preferences(json_data)
+            # TODO: Update GPO version in LDAP and GPT.INI
+            if result.get('success'):
+                self._update_gpo_version(json_data)
+            return result
+        except Exception as exp:
+            logger.error(f"Failed to save preferences: {exp}")
+            return {'success': False, 'message': str(exp)}
+
+    def get_preferences(self, gpo_guid, scope, pref_type=None):
+        """
+        Read preferences from XML files
+
+        Args:
+            gpo_guid: GUID of the GPO
+            scope: 'Machine' or 'User'
+            pref_type: Specific preference type to read, or None for all
+
+        Returns:
+            dict with preferences grouped by type
+        """
+        if self.gpprefs_worker is None:
+            logger.error("GPPrefsWorker not available")
+            return {}
+
+        try:
+            return self.gpprefs_worker.read_preferences(gpo_guid, scope, pref_type)
+        except Exception as exp:
+            logger.error(f"Failed to get preferences: {exp}")
+            return {}
+
+    def delete_preference(self, gpo_guid, scope, pref_type, uid):
+        """
+        Delete a specific preference by UID
+
+        Args:
+            gpo_guid: GUID of the GPO
+            scope: 'Machine' or 'User'
+            pref_type: Type of preference
+            uid: UID of the preference to delete
+
+        Returns:
+            True if deleted, False otherwise
+        """
+        if self.gpprefs_worker is None:
+            logger.error("GPPrefsWorker not available")
+            return False
+
+        try:
+            success = self.gpprefs_worker.delete_preference(gpo_guid, scope, pref_type, uid)
+            if success:
+                # TODO: Update GPO version in LDAP and GPT.INI
+                pass
+            return success
+        except Exception as exp:
+            logger.error(f"Failed to delete preference: {exp}")
+            return False
+
+    def _update_gpo_version(self, json_data):
+        """
+        Update GPO version in LDAP and GPT.INI
+
+        Args:
+            json_data: JSON data containing gpo_guid
+        """
+        # TODO: Implement version update
+        # 1. Increment versionNumber in LDAP
+        # 2. Update GPT.INI Version field
+        logger.warning("GPO version update not implemented yet")
 
 
 def list_of_dicts_to_dict(items, key_attr):
