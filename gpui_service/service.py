@@ -81,6 +81,23 @@ class GPUIService(dbus.service.Object):
                     <method name="reload">
                     <arg name="success" direction="out" type="b"/>
                     </method>
+                    <method name="save_preferences">
+                    <arg name="json_data" direction="in" type="s"/>
+                    <arg name="result" direction="out" type="v"/>
+                    </method>
+                    <method name="get_preferences">
+                    <arg name="gpo_guid" direction="in" type="s"/>
+                    <arg name="scope" direction="in" type="s"/>
+                    <arg name="pref_type" direction="in" type="s"/>
+                    <arg name="result" direction="out" type="v"/>
+                    </method>
+                    <method name="delete_preference">
+                    <arg name="gpo_guid" direction="in" type="s"/>
+                    <arg name="scope" direction="in" type="s"/>
+                    <arg name="pref_type" direction="in" type="s"/>
+                    <arg name="uid" direction="in" type="s"/>
+                    <arg name="success" direction="out" type="b"/>
+                    </method>
                 </interface>
                 <interface name="org.freedesktop.DBus.Introspectable">
                     <method name="Introspect">
@@ -215,3 +232,65 @@ class GPUIService(dbus.service.Object):
         logger.info("Manual reload requested")
         # The reload will be handled by the monitor
         return True
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='s', out_signature='v')
+    def save_preferences(self, json_data):
+        """
+        Save Group Policy Preferences from JSON data
+
+        Args:
+            json_data: JSON string containing preferences
+
+        Returns:
+            dict with results as JSON string
+        """
+        logger.info(f"save_preferences method called with json_data: {json_data[:200]}...")
+        try:
+            result = self.data_store.save_preferences(json_data)
+            return json.dumps(result, default=str)
+        except Exception as e:
+            logger.error(f"Failed to save preferences: {e}")
+            return json.dumps({'success': False, 'message': str(e)})
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='v')
+    def get_preferences(self, gpo_guid, scope, pref_type):
+        """
+        Read preferences from XML files
+
+        Args:
+            gpo_guid: GUID of the GPO
+            scope: 'Machine' or 'User'
+            pref_type: Preference type (empty string for all)
+
+        Returns:
+            dict with preferences as JSON string
+        """
+        logger.info(f"get_preferences method called with gpo_guid: {gpo_guid}, scope: {scope}, pref_type: {pref_type}")
+        pref_type_param = pref_type if pref_type else None
+        try:
+            result = self.data_store.get_preferences(gpo_guid, scope, pref_type_param)
+            return json.dumps(result, default=str)
+        except Exception as e:
+            logger.error(f"Failed to get preferences: {e}")
+            return json.dumps({})
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='ssss', out_signature='b')
+    def delete_preference(self, gpo_guid, scope, pref_type, uid):
+        """
+        Delete a specific preference by UID
+
+        Args:
+            gpo_guid: GUID of the GPO
+            scope: 'Machine' or 'User'
+            pref_type: Type of preference
+            uid: UID of the preference to delete
+
+        Returns:
+            True if deleted, False otherwise
+        """
+        logger.info(f"delete_preference method called with gpo_guid: {gpo_guid}, scope: {scope}, pref_type: {pref_type}, uid: {uid}")
+        try:
+            return self.data_store.delete_preference(gpo_guid, scope, pref_type, uid)
+        except Exception as e:
+            logger.error(f"Failed to delete preference: {e}")
+            return False
