@@ -20,7 +20,7 @@ GPPrefsWorker - Worker for Group Policy Preferences (GPP) XML file generation
 
 Supports all GPP types specified in MS-GPPREF:
 - Registry, Files, Folders, Shortcuts, Environment, IniFiles
-- Users, Groups, Drives, Printers, Services, ScheduledTasks
+- Drives, Printers, Services, ScheduledTasks
 """
 
 import logging
@@ -51,8 +51,7 @@ class GPPrefsWorker:
         'Shortcuts': '{4F2F7C55-2790-433e-8127-0739D1CFA327}',
         'Environment': '{78570023-8373-4a19-BA80-2F150738EA19}',
         'IniFiles': '{EEFACE84-D3D8-4680-8D4B-BF103E759448}',
-        'Users': '{DF5F1855-51E5-4d24-8B1A-D9BDE98BA1D1}',
-        'Groups': '{6D4A79E4-529C-4481-ABD0-F5BD7EA93BA7}',
+
         'Drives': '{935D1B74-9CB8-4e3c-9914-7DD559B7A417}',
         'Printers': '{9A5E9697-9095-436d-A0EE-4D128FDFBCE5}',  # SharedPrinter (others available)
         'Services': '{AB6F0B67-341F-4e51-92F9-005FBFBA1A43}',
@@ -67,8 +66,7 @@ class GPPrefsWorker:
         'Shortcuts': 'shortcuts.xml',
         'Environment': 'environment.xml',
         'IniFiles': 'ini.xml',
-        'Users': 'users.xml',
-        'Groups': 'groups.xml',
+
         'Drives': 'drives.xml',
         'Printers': 'printers.xml',
         'Services': 'services.xml',
@@ -104,15 +102,7 @@ class GPPrefsWorker:
             'required': ['action', 'iniPath', 'section', 'property', 'value'],
             'optional': [],
         },
-        'Users': {
-            'required': ['action', 'userName'],
-            'optional': ['fullName', 'description', 'password', 'cpassword', 'acctDisabled',
-                        'neverExpires', 'passwordNeverExpires', 'userMustChangePwd'],
-        },
-        'Groups': {
-            'required': ['action', 'groupName'],
-            'optional': ['description', 'members', 'deleteAllUsers', 'deleteAllGroups'],
-        },
+
         'Drives': {
             'required': ['action', 'driveLetter'],
             'optional': ['path', 'label', 'persistent', 'useLetter'],
@@ -243,8 +233,7 @@ class GPPrefsWorker:
             self._validate_files_properties(properties)
         elif pref_type == 'Environment':
             self._validate_environment_properties(properties)
-        elif pref_type == 'Users':
-            self._validate_users_properties(properties)
+
         # Add other type-specific validations as needed
 
     def _validate_registry_properties(self, properties):
@@ -281,18 +270,6 @@ class GPPrefsWorker:
             elif not isinstance(user, bool):
                 raise ValueError("user must be boolean")
 
-    def _validate_users_properties(self, properties):
-        """Validate Users properties"""
-        # Password handling warning
-        if 'password' in properties:
-            logger.warning("Storing password in plaintext is insecure. Use cpassword with encryption.")
-        # Validate boolean fields
-        bool_fields = ['acctDisabled', 'neverExpires', 'passwordNeverExpires', 'userMustChangePwd']
-        for field in bool_fields:
-            if field in properties:
-                val = properties[field]
-                if isinstance(val, str) and val.lower() not in ['true', 'false', '0', '1']:
-                    raise ValueError(f"{field} must be boolean")
 
     def _ensure_uid(self, pref):
         """
@@ -404,18 +381,7 @@ class GPPrefsWorker:
         """
         props_elem = ET.Element('Properties')
 
-        # Handle password encryption for Users/Groups
         processed_props = properties.copy()
-        if pref_type in ['Users', 'Groups'] and 'password' in processed_props:
-            password = processed_props.pop('password')
-            if password:
-                cpassword = self._encrypt_password(password)
-                if cpassword:
-                    processed_props['cpassword'] = cpassword
-                    logger.warning("Password encrypted as cpassword (insecure). Consider using alternative mechanisms.")
-                else:
-                    logger.error("Failed to encrypt password, cpassword will be empty")
-            # If password is empty string, don't add cpassword
 
         for key, value in processed_props.items():
             if value is None:
