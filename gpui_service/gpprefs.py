@@ -28,7 +28,7 @@ import json
 import uuid
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
-from pathlib import Path
+import os
 from datetime import datetime
 import traceback
 import re
@@ -73,55 +73,70 @@ class GPPrefsWorker:
         'NetworkShares': '{2888C5E7-94FC-4739-90AA-2C1536D68BC0}',
     }
 
+    # XML file names for each preference type
+    FILE_NAME_MAP = {
+        'Registry': 'RegistrySettings.xml',
+        'Files': 'Files.xml',
+        'Folders': 'Folders.xml',
+        'Shortcuts': 'Shortcuts.xml',
+        'Environment': 'EnvironmentVariables.xml',
+        'IniFiles': 'IniFiles.xml',
+        'Drives': 'Drives.xml',
+        'Printers': 'Printers.xml',
+        'Services': 'Services.xml',
+        'ScheduledTasks': 'ScheduledTasks.xml',
+        'NetworkShares': 'NetworkShareSettings.xml',
+    }
+
     # Valid actions for each type (U=Update, C=Create, R=Replace, D=Delete)
     VALID_ACTIONS = ['U', 'C', 'R', 'D']
 
-    # Required and optional properties for each preference type
+    # Required and optional properties for each preference type (inside <Properties> element)
+    # Based on MS-GPPREF XML schemas. Common attributes (clsid, name, uid, changed, desc, bypassErrors, userContext, removePolicy, image, status) are on the preference element.
     PROPERTY_SCHEMAS = {
         'Registry': {
-            'required': ['action', 'hive', 'key', 'name', 'type', 'value'],
-            'optional': ['removePolicy', 'disabled'],
+            'required': ['hive', 'key'],
+            'optional': ['action', 'default', 'name', 'type', 'value', 'displayDecimal', 'defaultValue', 'bitfield', 'disabled', 'SubProp'],
         },
         'Files': {
-            'required': ['action', 'source', 'destination'],
-            'optional': ['readOnly', 'archive', 'hidden', 'system', 'overwrite', 'suppressErrors', 'removePolicy', 'disabled'],
+            'required': ['fromPath', 'targetPath'],
+            'optional': ['action', 'readOnly', 'archive', 'hidden', 'suppress', 'disabled'],
         },
         'Folders': {
-            'required': ['action', 'path'],
-            'optional': ['readOnly', 'archive', 'hidden', 'system', 'suppressErrors', 'removePolicy', 'disabled'],
+            'required': ['path', 'readOnly', 'archive', 'hidden'],
+            'optional': ['action', 'deleteSubFolders', 'deleteFiles', 'deleteFolder', 'deleteReadOnly', 'deleteIgnoreErrors', 'disabled'],
         },
         'Shortcuts': {
-            'required': ['action', 'targetPath', 'location'],
-            'optional': ['name', 'arguments', 'workingDirectory', 'iconPath', 'iconIndex', 'windowStyle', 'description', 'removePolicy', 'disabled'],
+            'required': ['targetType', 'targetPath', 'shortcutPath'],
+            'optional': ['pidl', 'action', 'comment', 'shortcutKey', 'startIn', 'arguments', 'iconIndex', 'iconPath', 'window', 'disabled'],
         },
         'Environment': {
-            'required': ['action', 'name', 'value', 'userContext'],
-            'optional': ['expand', 'append', 'remove', 'removePolicy', 'disabled'],
+            'required': ['name', 'value'],
+            'optional': ['action', 'user', 'partial', 'disabled'],
         },
         'IniFiles': {
-            'required': ['action', 'iniPath', 'section', 'property', 'value'],
-            'optional': ['removePolicy', 'disabled'],
+            'required': ['path'],
+            'optional': ['section', 'value', 'property', 'action', 'disabled'],
         },
-
         'Drives': {
-            'required': ['action', 'driveLetter'],
-            'optional': ['path', 'label', 'persistent', 'useLetter', 'removePolicy', 'disabled'],
+            'required': ['path', 'persistent', 'useLetter', 'letter'],
+            'optional': ['action', 'thisDrive', 'allDrives', 'userName', 'cpassword', 'label', 'disabled'],
         },
         'Printers': {
-            'required': ['action', 'printerName'],
-            'optional': ['port', 'path', 'location', 'comment', 'default', 'skipLocal', 'localName', 'removePolicy', 'disabled'],
+            'required': ['path', 'port'],
+            'optional': ['action', 'comment', 'location', 'default', 'skipLocal', 'deleteAll', 'persistent', 'deleteMaps', 'username', 'cpassword', 'disabled'],
         },
         'Services': {
-            'required': ['action', 'serviceName'],
-            'optional': ['startupType', 'serviceAction', 'arguments', 'waitTimeout', 'account', 'password', 'removePolicy', 'disabled'],
+            'required': ['serviceName'],
+            'optional': ['action', 'startupType', 'serviceAction', 'arguments', 'waitTimeout', 'account', 'password', 'disabled'],
         },
         'ScheduledTasks': {
-            'required': ['action', 'taskName'],
-            'optional': ['runAs', 'command', 'arguments', 'startTime', 'days', 'months', 'password', 'taskType', 'trigger', 'startIn', 'enabled', 'hidden', 'name', 'removePolicy', 'disabled'],
+            'required': ['name', 'appName', 'enabled'],
+            'optional': ['action', 'args', 'startIn', 'comment', 'maxRunTime', 'runAs', 'cpassword', 'deleteWhenDone', 'deadlineMinutes', 'startOnlyIfIdle', 'stopOnIdleEnd', 'noStartIfOnBatteries', 'stopIfGoingOnBatteries', 'systemRequired', 'disabled', 'Triggers'],
         },
         'NetworkShares': {
-            'required': ['action', 'path'],
-            'optional': ['label', 'persistent', 'useLetter', 'letter', 'removePolicy', 'disabled'],
+            'required': ['name', 'path', 'comment'],
+            'optional': ['action', 'allRegular', 'allHidden', 'allAdminDrive', 'limitUsers', 'abe', 'userLimit', 'disabled'],
         },
     }
 
@@ -132,8 +147,8 @@ class GPPrefsWorker:
         Args:
             sysvol_path: Path to FreeIPA sysvol directory where GPT structures are stored
         """
-        self.sysvol_path = Path(sysvol_path)
-        logger.debug(f"GPPrefsWorker initialized with sysvol path: {sysvol_path}")
+        self.sysvol_path = sysvol_path
+        logger.debug("GPPrefsWorker initialized with sysvol path: {}".format(sysvol_path))
 
     def _get_preferences_path(self, gpo_guid, scope):
         """
@@ -144,10 +159,10 @@ class GPPrefsWorker:
             scope: 'Machine' or 'User'
 
         Returns:
-            Path object to the Preferences directory
+            string path to the Preferences directory
         """
         # Structure: sysvol_path/{gpo_guid}/{scope}/Preferences
-        return self.sysvol_path / gpo_guid / scope / 'Preferences'
+        return os.path.join(self.sysvol_path, gpo_guid, scope, 'Preferences')
 
     def _get_xml_file_path(self, gpo_guid, scope, pref_type):
         """
@@ -159,13 +174,13 @@ class GPPrefsWorker:
             pref_type: Preference type (Registry, Files, etc.)
 
         Returns:
-            Path object to the XML file
+            string path to the XML file
         """
         pref_dir = self._get_preferences_path(gpo_guid, scope)
         xml_file_name = self.FILE_NAME_MAP.get(pref_type)
         if not xml_file_name:
-            xml_file_name = f"{pref_type.lower()}.xml"
-        return pref_dir / pref_type / xml_file_name
+            xml_file_name = "{}.xml".format(pref_type.lower())
+        return os.path.join(pref_dir, pref_type, xml_file_name)
 
     def _validate_json(self, data):
         """
@@ -180,7 +195,7 @@ class GPPrefsWorker:
         required = ['gpo_guid', 'scope', 'preferences']
         for field in required:
             if field not in data:
-                raise ValueError(f"Missing required field: {field}")
+                raise ValueError("Missing required field: {}".format(field))
 
         if data['scope'] not in ['Machine', 'User']:
             raise ValueError("scope must be 'Machine' or 'User'")
@@ -191,14 +206,14 @@ class GPPrefsWorker:
         for pref in data['preferences']:
             if 'type' not in pref:
                 raise ValueError("Each preference must have 'type' field")
-            if pref['type'] not in self.CLSID_MAP:
-                raise ValueError(f"Unknown preference type: {pref['type']}")
+            if pref['type'] not in self.OUTER_CLSID_MAP:
+                raise ValueError("Unknown preference type: {}".format(pref['type']))
             if 'properties' not in pref:
-                raise ValueError(f"Preference {pref.get('uid', 'unknown')} missing 'properties'")
+                raise ValueError("Preference {} missing 'properties'".format(pref.get('uid', 'unknown')))
             # Validate action if present
             if 'action' in pref['properties']:
                 if pref['properties']['action'] not in self.VALID_ACTIONS:
-                    raise ValueError(f"Invalid action: {pref['properties']['action']}")
+                    raise ValueError("Invalid action: {}".format(pref['properties']['action']))
 
             # Validate properties for the specific type
             self._validate_properties(pref['type'], pref['properties'])
@@ -215,20 +230,20 @@ class GPPrefsWorker:
             ValueError: if validation fails
         """
         if pref_type not in self.PROPERTY_SCHEMAS:
-            raise ValueError(f"No property schema defined for type: {pref_type}")
+            raise ValueError("No property schema defined for type: {}".format(pref_type))
 
         schema = self.PROPERTY_SCHEMAS[pref_type]
 
         # Check required properties
         for prop in schema['required']:
             if prop not in properties:
-                raise ValueError(f"Missing required property '{prop}' for {pref_type}")
+                raise ValueError("Missing required property '{}' for {}".format(prop, pref_type))
 
         # Check for unknown properties
         allowed = set(schema['required'] + schema['optional'])
         for prop in properties.keys():
             if prop not in allowed:
-                raise ValueError(f"Unknown property '{prop}' for {pref_type}. Allowed: {sorted(allowed)}")
+                raise ValueError("Unknown property '{}' for {}. Allowed: {}".format(prop, pref_type, sorted(allowed)))
 
         # Type-specific validation
         if pref_type == 'Registry':
@@ -256,186 +271,369 @@ class GPPrefsWorker:
 
     def _validate_registry_properties(self, properties):
         """Validate Registry properties"""
+        # Validate hive
         hive = properties.get('hive')
         if hive and hive not in ['HKEY_LOCAL_MACHINE', 'HKEY_CURRENT_USER',
                                  'HKEY_CLASSES_ROOT', 'HKEY_USERS', 'HKEY_CURRENT_CONFIG']:
-            raise ValueError(f"Invalid hive: {hive}")
+            raise ValueError("Invalid hive: {}".format(hive))
 
+        # Validate key not empty
+        key = properties.get('key')
+        if key and not key.strip():
+            raise ValueError("key cannot be empty")
+
+        # Validate action enum
+        action = properties.get('action')
+        if action and action not in ['C', 'D', 'R', 'U']:
+            raise ValueError("Invalid action: {}. Must be C, D, R, or U".format(action))
+
+        # Validate boolean properties
+        bool_props = ['default', 'displayDecimal', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
+                elif not isinstance(val, bool):
+                    raise ValueError("{} must be boolean".format(prop))
+
+        # Validate numeric properties (xs:unsignedByte)
+        numeric_props = ['bitfield', 'defaultValue', 'value']
+        for prop in numeric_props:
+            val = properties.get(prop)
+            if val is not None:
+                try:
+                    num = int(val)
+                    if num < 0 or num > 255:
+                        raise ValueError("{} must be between 0 and 255".format(prop))
+                except (ValueError, TypeError):
+                    raise ValueError("{} must be an integer between 0 and 255".format(prop))
+
+        # Validate name not empty if present
+        name = properties.get('name')
+        if name and not name.strip():
+            raise ValueError("name cannot be empty")
+
+        # Validate type enum
         reg_type = properties.get('type')
         if reg_type and reg_type not in ['REG_SZ', 'REG_EXPAND_SZ', 'REG_BINARY',
                                          'REG_DWORD', 'REG_DWORD_BIG_ENDIAN',
                                          'REG_LINK', 'REG_MULTI_SZ', 'REG_QWORD',
                                          'REG_NONE']:
-            raise ValueError(f"Invalid registry type: {reg_type}")
+            raise ValueError("Invalid registry type: {}".format(reg_type))
+
+        # Validate default vs name relationship
+        default = properties.get('default')
+        if default and isinstance(default, str):
+            default = default.lower() in ['true', '1']
+        if default and name:
+            raise ValueError("Cannot specify both 'default' and 'name' for registry value")
+        if not default and not name:
+            # This is allowed - configuring only a key
+            pass
 
     def _validate_files_properties(self, properties):
         """Validate Files properties"""
         # Validate paths
-        source = properties.get('source')
-        destination = properties.get('destination')
-        if source and not source.strip():
-            raise ValueError("source cannot be empty")
-        if destination and not destination.strip():
-            raise ValueError("destination cannot be empty")
+        from_path = properties.get('fromPath')
+        target_path = properties.get('targetPath')
+        if from_path and not from_path.strip():
+            raise ValueError("fromPath cannot be empty")
+        if target_path and not target_path.strip():
+            raise ValueError("targetPath cannot be empty")
+        # Validate boolean properties
+        bool_props = ['readOnly', 'archive', 'hidden', 'suppress', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
+                elif not isinstance(val, bool):
+                    raise ValueError("{} must be boolean".format(prop))
 
     def _validate_environment_properties(self, properties):
         """Validate Environment properties"""
-        user_context = properties.get('userContext')
-        if user_context is not None:
-            if isinstance(user_context, str):
-                if user_context.lower() not in ['true', 'false', '0', '1']:
-                    raise ValueError("userContext must be boolean or 'true'/'false'")
-            elif not isinstance(user_context, bool):
-                raise ValueError("userContext must be boolean")
+        # Validate name and value not empty
+        name = properties.get('name')
+        if name and not name.strip():
+            raise ValueError("name cannot be empty")
+        value = properties.get('value')
+        if value and not value.strip():
+            raise ValueError("value cannot be empty")
 
-        expand = properties.get('expand')
-        if expand is not None:
-            if isinstance(expand, str):
-                if expand.lower() not in ['true', 'false', '0', '1']:
-                    raise ValueError("expand must be boolean or 'true'/'false'")
-            elif not isinstance(expand, bool):
-                raise ValueError("expand must be boolean")
+        # Validate action enum
+        action = properties.get('action')
+        if action and action not in ['C', 'D', 'R', 'U']:
+            raise ValueError("Invalid action: {}. Must be C, D, R, or U".format(action))
+
+        # Validate boolean properties
+        bool_props = ['user', 'partial', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
+                elif not isinstance(val, bool):
+                    raise ValueError("{} must be boolean".format(prop))
 
 
     def _validate_folders_properties(self, properties):
         """Validate Folders properties"""
+        # Validate path not empty
         path = properties.get('path')
         if path and not path.strip():
             raise ValueError("path cannot be empty")
-        # Validate boolean properties
-        bool_props = ['readOnly', 'archive', 'hidden', 'system', 'suppressErrors', 'removePolicy', 'disabled']
+
+        # Validate action enum
+        action = properties.get('action')
+        if action and action not in ['C', 'D', 'R', 'U']:
+            raise ValueError("Invalid action: {}. Must be C, D, R, or U".format(action))
+
+        # Validate required boolean properties (readOnly, archive, hidden)
+        bool_props = ['readOnly', 'archive', 'hidden', 'disabled']
         for prop in bool_props:
             val = properties.get(prop)
             if val is not None:
                 if isinstance(val, str):
                     if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
                 elif not isinstance(val, bool):
-                    raise ValueError(f"{prop} must be boolean")
+                    raise ValueError("{} must be boolean".format(prop))
+
+        # Validate delete* properties (xs:unsignedByte)
+        delete_props = ['deleteSubFolders', 'deleteFiles', 'deleteFolder', 'deleteReadOnly', 'deleteIgnoreErrors']
+        for prop in delete_props:
+            val = properties.get(prop)
+            if val is not None:
+                try:
+                    num = int(val)
+                    if num < 0 or num > 255:
+                        raise ValueError("{} must be between 0 and 255".format(prop))
+                except (ValueError, TypeError):
+                    raise ValueError("{} must be an integer between 0 and 255".format(prop))
 
     def _validate_shortcuts_properties(self, properties):
         """Validate Shortcuts properties"""
-        target_path = properties.get('targetPath')
-        if target_path and not target_path.strip():
-            raise ValueError("targetPath cannot be empty")
-        location = properties.get('location')
-        if location and not location.strip():
-            raise ValueError("location cannot be empty")
-        # Validate boolean properties
-        bool_props = ['removePolicy', 'disabled']
-        for prop in bool_props:
+        # Check required properties
+        for prop in ['targetType', 'targetPath', 'shortcutPath']:
             val = properties.get(prop)
-            if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
-                elif not isinstance(val, bool):
-                    raise ValueError(f"{prop} must be boolean")
+            if val is None or not str(val).strip():
+                raise ValueError("Shortcuts: {} is required".format(prop))
+
+        # Validate targetType enum
+        target_type = properties.get('targetType')
+        if target_type and str(target_type).upper() not in ['FILESYSTEM', 'URL', 'SHELL']:
+            raise ValueError("targetType must be one of: FILESYSTEM, URL, SHELL")
+
+        # Validate action enum if present
+        action = properties.get('action')
+        if action and action.upper() not in self.VALID_ACTIONS:
+            raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
+
+        # Validate shortcutKey as xs:unsignedByte (0-255) if present
+        shortcut_key = properties.get('shortcutKey')
+        if shortcut_key is not None:
+            try:
+                num = int(shortcut_key)
+                if num < 0 or num > 255:
+                    raise ValueError("shortcutKey must be between 0 and 255")
+            except (ValueError, TypeError):
+                raise ValueError("shortcutKey must be an integer between 0 and 255")
+
+        # Validate boolean property 'disabled' (xs:boolean)
+        disabled = properties.get('disabled')
+        if disabled is not None:
+            if isinstance(disabled, str):
+                if disabled.lower() not in ['true', 'false', '0', '1']:
+                    raise ValueError("disabled must be boolean or 'true'/'false'")
+            elif not isinstance(disabled, bool):
+                raise ValueError("disabled must be boolean")
 
     def _validate_network_shares_properties(self, properties):
         """Validate NetworkShares properties"""
-        path = properties.get('path')
-        if path and not path.strip():
-            raise ValueError("path cannot be empty")
-        # Validate boolean properties
-        bool_props = ['persistent', 'useLetter', 'removePolicy', 'disabled']
+        # Check required properties
+        for prop in ['name', 'path', 'comment']:
+            val = properties.get(prop)
+            if val is None or not str(val).strip():
+                raise ValueError("NetworkShares: {} is required".format(prop))
+
+        # Validate action enum if present
+        action = properties.get('action')
+        if action and action.upper() not in self.VALID_ACTIONS:
+            raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
+
+        # Validate boolean properties (xs:boolean)
+        bool_props = ['allRegular', 'allHidden', 'allAdminDrive', 'disabled']
         for prop in bool_props:
             val = properties.get(prop)
             if val is not None:
                 if isinstance(val, str):
                     if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
                 elif not isinstance(val, bool):
-                    raise ValueError(f"{prop} must be boolean")
+                    raise ValueError("{} must be boolean".format(prop))
+
+        # Validate userLimit as xs:unsignedByte (0-255) if present
+        user_limit = properties.get('userLimit')
+        if user_limit is not None:
+            try:
+                num = int(user_limit)
+                if num < 0 or num > 255:
+                    raise ValueError("userLimit must be between 0 and 255")
+            except (ValueError, TypeError):
+                raise ValueError("userLimit must be an integer between 0 and 255")
+
+        # Validate limitUsers enum if present
+        limit_users = properties.get('limitUsers')
+        if limit_users and limit_users.upper() not in ['SET_LIMIT', 'MAX_ALLOWED', 'NO_CHANGE']:
+            raise ValueError("limitUsers must be one of: SET_LIMIT, MAX_ALLOWED, NO_CHANGE")
+
+        # Validate abe enum if present
+        abe = properties.get('abe')
+        if abe and abe.upper() not in ['ENABLE', 'DISABLE', 'NO_CHANGE']:
+            raise ValueError("abe must be one of: ENABLE, DISABLE, NO_CHANGE")
 
     def _validate_printers_properties(self, properties):
         """Validate Printers properties"""
-        printer_name = properties.get('printerName')
-        if printer_name and not printer_name.strip():
-            raise ValueError("printerName cannot be empty")
-        local_name = properties.get('localName')
-        if local_name and not local_name.strip():
-            raise ValueError("localName cannot be empty if provided")
-        # Validate boolean properties
-        bool_props = ['default', 'skipLocal', 'removePolicy', 'disabled']
+        # Check required properties
+        for prop in ['path', 'port']:
+            val = properties.get(prop)
+            if val is None or not str(val).strip():
+                raise ValueError("Printers: {} is required".format(prop))
+
+        # Validate action enum if present
+        action = properties.get('action')
+        if action and action.upper() not in self.VALID_ACTIONS:
+            raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
+
+        # Validate boolean properties (xs:boolean)
+        bool_props = ['default', 'skipLocal', 'deleteAll', 'persistent', 'deleteMaps', 'disabled']
         for prop in bool_props:
             val = properties.get(prop)
             if val is not None:
                 if isinstance(val, str):
                     if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
                 elif not isinstance(val, bool):
-                    raise ValueError(f"{prop} must be boolean")
+                    raise ValueError("{} must be boolean".format(prop))
 
     def _validate_scheduled_tasks_properties(self, properties):
         """Validate ScheduledTasks properties"""
-        task_name = properties.get('taskName')
-        if task_name and not task_name.strip():
-            raise ValueError("taskName cannot be empty")
-        # Validate boolean properties
-        bool_props = ['enabled', 'hidden', 'removePolicy', 'disabled']
+        # Check required properties
+        for prop in ['name', 'appName', 'enabled']:
+            val = properties.get(prop)
+            if val is None or not str(val).strip():
+                raise ValueError("ScheduledTasks: {} is required".format(prop))
+
+        # Validate action enum if present
+        action = properties.get('action')
+        if action and action.upper() not in self.VALID_ACTIONS:
+            raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
+
+        # Validate boolean properties (xs:boolean)
+        bool_props = ['enabled', 'deleteWhenDone', 'startOnlyIfIdle', 'stopOnIdleEnd', 'noStartIfOnBatteries', 'stopIfGoingOnBatteries', 'systemRequired', 'disabled']
         for prop in bool_props:
             val = properties.get(prop)
             if val is not None:
                 if isinstance(val, str):
                     if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
                 elif not isinstance(val, bool):
-                    raise ValueError(f"{prop} must be boolean")
+                    raise ValueError("{} must be boolean".format(prop))
+
+        # Validate maxRunTime and deadlineMinutes as unsigned int (0-4294967295) if present
+        unsigned_int_props = ['maxRunTime', 'deadlineMinutes']
+        for prop in unsigned_int_props:
+            val = properties.get(prop)
+            if val is not None:
+                try:
+                    num = int(val)
+                    if num < 0 or num > 4294967295:
+                        raise ValueError("{} must be between 0 and 4294967295".format(prop))
+                except (ValueError, TypeError):
+                    raise ValueError("{} must be an integer between 0 and 4294967295".format(prop))
 
     def _validate_services_properties(self, properties):
         """Validate Services properties"""
+        # Check required property
         service_name = properties.get('serviceName')
-        if service_name and not service_name.strip():
-            raise ValueError("serviceName cannot be empty")
-        # Validate boolean properties
-        bool_props = ['removePolicy', 'disabled']
-        for prop in bool_props:
-            val = properties.get(prop)
-            if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
-                elif not isinstance(val, bool):
-                    raise ValueError(f"{prop} must be boolean")
+        if service_name is None or not str(service_name).strip():
+            raise ValueError("Services: serviceName is required")
+
+        # Validate action enum if present
+        action = properties.get('action')
+        if action and action.upper() not in self.VALID_ACTIONS:
+            raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
+
+        # Validate boolean property 'disabled' (xs:boolean)
+        disabled = properties.get('disabled')
+        if disabled is not None:
+            if isinstance(disabled, str):
+                if disabled.lower() not in ['true', 'false', '0', '1']:
+                    raise ValueError("disabled must be boolean or 'true'/'false'")
+            elif not isinstance(disabled, bool):
+                raise ValueError("disabled must be boolean")
 
     def _validate_drives_properties(self, properties):
         """Validate Drives properties"""
-        drive_letter = properties.get('driveLetter')
-        if drive_letter and not drive_letter.strip():
-            raise ValueError("driveLetter cannot be empty")
-        # Validate boolean properties
-        bool_props = ['persistent', 'useLetter', 'removePolicy', 'disabled']
-        for prop in bool_props:
+        # Check required properties
+        for prop in ['path', 'persistent', 'useLetter', 'letter']:
+            val = properties.get(prop)
+            if val is None or not str(val).strip():
+                raise ValueError("Drives: {} is required".format(prop))
+
+        # Validate action enum if present
+        action = properties.get('action')
+        if action and action.upper() not in self.VALID_ACTIONS:
+            raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
+
+        # Validate letter is a single character A-Z (case insensitive)
+        letter = properties.get('letter')
+        if letter and not str(letter).strip().isalpha() or len(str(letter).strip()) != 1:
+            raise ValueError("letter must be a single letter A-Z")
+
+        # Validate persistent, useLetter, disabled as xs:unsignedByte (0-255)
+        unsigned_byte_props = ['persistent', 'useLetter', 'disabled']
+        for prop in unsigned_byte_props:
             val = properties.get(prop)
             if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
-                elif not isinstance(val, bool):
-                    raise ValueError(f"{prop} must be boolean")
+                try:
+                    num = int(val)
+                    if num < 0 or num > 255:
+                        raise ValueError("{} must be between 0 and 255".format(prop))
+                except (ValueError, TypeError):
+                    raise ValueError("{} must be an integer between 0 and 255".format(prop))
+
+        # Validate thisDrive and allDrives enums if present
+        for prop in ['thisDrive', 'allDrives']:
+            val = properties.get(prop)
+            if val and val.upper() not in ['NOCHANGE', 'HIDE', 'SHOW']:
+                raise ValueError("{} must be one of: NOCHANGE, HIDE, SHOW".format(prop))
 
     def _validate_inifiles_properties(self, properties):
         """Validate IniFiles properties"""
-        ini_path = properties.get('iniPath')
-        if ini_path and not ini_path.strip():
-            raise ValueError("iniPath cannot be empty")
-        section = properties.get('section')
-        if section and not section.strip():
-            raise ValueError("section cannot be empty")
-        property_name = properties.get('property')
-        if property_name and not property_name.strip():
-            raise ValueError("property cannot be empty")
-        # Validate boolean properties
-        bool_props = ['removePolicy', 'disabled']
-        for prop in bool_props:
-            val = properties.get(prop)
-            if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
-                elif not isinstance(val, bool):
-                    raise ValueError(f"{prop} must be boolean")
+        # Check required property
+        path = properties.get('path')
+        if path is None or not str(path).strip():
+            raise ValueError("IniFiles: path is required")
+
+        # Validate action enum if present
+        action = properties.get('action')
+        if action and action.upper() not in self.VALID_ACTIONS:
+            raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
+
+        # Validate disabled as xs:unsignedByte (0-255) if present
+        disabled = properties.get('disabled')
+        if disabled is not None:
+            try:
+                num = int(disabled)
+                if num < 0 or num > 255:
+                    raise ValueError("disabled must be between 0 and 255")
+            except (ValueError, TypeError):
+                raise ValueError("disabled must be an integer between 0 and 255")
 
     def _ensure_uid(self, pref):
         """
@@ -454,7 +652,7 @@ class GPPrefsWorker:
             uid = pref['uid']
             guid_pattern = r'^\{?[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}\}?$'
             if not re.match(guid_pattern, uid, re.IGNORECASE):
-                raise ValueError(f"Invalid UID format: {uid}")
+                raise ValueError("Invalid UID format: {}".format(uid))
         return pref
 
     def _ensure_changed(self, pref):
@@ -508,7 +706,7 @@ class GPPrefsWorker:
             # Return empty string or raise error
             return ""
         except Exception as e:
-            logger.error(f"Failed to encrypt password: {e}")
+            logger.error("Failed to encrypt password: {}".format(e))
             return ""
 
     def _bool_to_int(self, value):
@@ -547,15 +745,35 @@ class GPPrefsWorker:
         """
         props_elem = ET.Element('Properties')
 
-        processed_props = properties.copy()
+        # Get allowed properties for this type
+        schema = self.PROPERTY_SCHEMAS[pref_type]
+        allowed = set(schema['required'] + schema['optional'])
 
-        for key, value in processed_props.items():
+        for key, value in properties.items():
+            if key not in allowed:
+                # Skip unknown properties (should have been validated)
+                continue
             if value is None:
+                continue
+            # Skip SubProp and Triggers - handle as child elements
+            if key in ['SubProp', 'Triggers']:
                 continue
             if isinstance(value, bool):
                 props_elem.set(key, self._bool_to_int(value))
             else:
                 props_elem.set(key, str(value))
+
+        # Handle nested SubProp elements for Registry
+        if pref_type == 'Registry' and 'SubProp' in properties:
+            for subprop in properties['SubProp']:
+                subprop_elem = self._create_subprop_element(subprop)
+                props_elem.append(subprop_elem)
+
+        # Handle nested Triggers for ScheduledTasks
+        if pref_type == 'ScheduledTasks' and 'Triggers' in properties:
+            triggers_elem = self._create_triggers_element(properties['Triggers'])
+            props_elem.append(triggers_elem)
+
         return props_elem
 
     def _create_filter_element(self, filters):
@@ -580,7 +798,7 @@ class GPPrefsWorker:
             if not cond_type:
                 continue
 
-            cond_elem = ET.Element(f'Filter{cond_type}')
+            cond_elem = ET.Element('Filter{}'.format(cond_type))
             for key, value in condition.items():
                 if key == 'type':
                     continue
@@ -591,6 +809,27 @@ class GPPrefsWorker:
             filters_elem.append(cond_elem)
 
         return filters_elem
+
+    def _create_subprop_element(self, subprop):
+        """Create <SubProp> element for Registry bitfield operations"""
+        elem = ET.Element('SubProp')
+        for attr in ['id', 'value', 'mask']:
+            if attr in subprop:
+                elem.set(attr, str(subprop[attr]))
+        return elem
+
+    def _create_triggers_element(self, triggers):
+        """Create <Triggers> element for ScheduledTasks"""
+        triggers_elem = ET.Element('Triggers')
+        for trigger in triggers:
+            trigger_elem = ET.Element('Trigger')
+            for key, value in trigger.items():
+                if isinstance(value, bool):
+                    trigger_elem.set(key, self._bool_to_int(value))
+                else:
+                    trigger_elem.set(key, str(value))
+            triggers_elem.append(trigger_elem)
+        return triggers_elem
 
     def _create_preference_element(self, pref):
         """
@@ -603,7 +842,7 @@ class GPPrefsWorker:
             ET.Element for the preference
         """
         pref_type = pref['type']
-        clsid = self.CLSID_MAP[pref_type]
+        clsid = self.INNER_CLSID_MAP[pref_type]
 
         # Create root element for this preference
         pref_elem = ET.Element(pref_type)
@@ -611,14 +850,27 @@ class GPPrefsWorker:
         pref_elem.set('name', pref.get('name', ''))
         pref_elem.set('uid', pref['uid'])
         pref_elem.set('changed', pref['changed'])
+
+        # Optional common attributes
+        if 'desc' in pref:
+            pref_elem.set('desc', str(pref['desc']))
         if 'status' in pref:
             pref_elem.set('status', str(pref['status']))
         if 'image' in pref:
             pref_elem.set('image', str(pref['image']))
 
-        bypass_errors = pref.get('bypassErrors', False)
-        if bypass_errors:
-            pref_elem.set('bypassErrors', '1')
+        # Boolean common attributes (convert to '0'/'1')
+        for attr in ['bypassErrors', 'userContext', 'removePolicy']:
+            if attr in pref:
+                value = pref[attr]
+                # Special handling for userContext string 'User'/'Machine'
+                if attr == 'userContext' and isinstance(value, str):
+                    if value.lower() == 'user':
+                        value = True
+                    elif value.lower() == 'machine':
+                        value = False
+                    # else treat as boolean via _bool_to_int
+                pref_elem.set(attr, self._bool_to_int(value))
 
         # Add Properties
         props_elem = self._create_properties_element(pref_type, pref['properties'])
@@ -686,10 +938,10 @@ class GPPrefsWorker:
                     xml_path.write_text(xml_content, encoding='utf-8')
                     saved_files.append(str(xml_path))
 
-                    logger.info(f"Saved {len(prefs)} {pref_type} preferences to {xml_path}")
+                    logger.info("Saved {} {} preferences to {}".format(len(prefs), pref_type, xml_path))
 
                 except Exception as e:
-                    error_msg = f"Failed to save {pref_type} preferences: {str(e)}"
+                    error_msg = "Failed to save {} preferences: {}".format(pref_type, str(e))
                     logger.error(error_msg)
                     logger.error(traceback.format_exc())
                     errors.append(error_msg)
@@ -697,19 +949,19 @@ class GPPrefsWorker:
             if errors:
                 return {
                     'success': False,
-                    'message': f"Partial success with errors: {'; '.join(errors)}",
+                    'message': "Partial success with errors: {}".format('; '.join(errors)),
                     'files': saved_files,
                     'errors': errors
                 }
 
             return {
                 'success': True,
-                'message': f"Successfully saved preferences to {len(saved_files)} file(s)",
+                'message': "Successfully saved preferences to {} file(s)".format(len(saved_files)),
                 'files': saved_files
             }
 
         except Exception as e:
-            logger.error(f"Failed to save preferences: {e}")
+            logger.error("Failed to save preferences: {}".format(e))
             logger.error(traceback.format_exc())
             return {
                 'success': False,
@@ -728,21 +980,20 @@ class GPPrefsWorker:
         Returns:
             ET.Element for Collection
         """
-        from pathlib import Path
-        xml_path = Path(xml_path)
-        if xml_path.exists():
+        import os
+        if os.path.exists(xml_path):
             try:
                 tree = ET.parse(xml_path)
                 root = tree.getroot()
                 if root.tag == 'Collection':
                     return root
                 else:
-                    logger.warning(f"Root element is not Collection in {xml_path}, creating new")
+                    logger.warning("Root element is not Collection in {}, creating new".format(xml_path))
             except ET.ParseError as e:
-                logger.warning(f"Failed to parse XML file {xml_path}: {e}, creating new")
+                logger.warning("Failed to parse XML file {}: {}, creating new".format(xml_path, e))
 
         # Create new Collection
-        clsid = self.CLSID_MAP[pref_type]
+        clsid = self.OUTER_CLSID_MAP[pref_type]
         collection = ET.Element('Collection')
         collection.set('clsid', clsid)
         return collection
@@ -798,7 +1049,7 @@ class GPPrefsWorker:
         if pref_type:
             types_to_read = [pref_type]
         else:
-            types_to_read = self.CLSID_MAP.keys()
+            types_to_read = self.OUTER_CLSID_MAP.keys()
 
         for ptype in types_to_read:
             try:
@@ -809,7 +1060,7 @@ class GPPrefsWorker:
                 tree = ET.parse(xml_path)
                 collection = tree.getroot()
                 if collection.tag != 'Collection':
-                    logger.warning(f"Root element is not Collection in {xml_path}")
+                    logger.warning("Root element is not Collection in {}".format(xml_path))
                     continue
 
                 preferences = []
@@ -820,7 +1071,7 @@ class GPPrefsWorker:
                 result[ptype] = preferences
 
             except Exception as e:
-                logger.error(f"Failed to read {ptype} preferences: {e}")
+                logger.error("Failed to read {} preferences: {}".format(ptype, e))
 
         return result
 
@@ -841,8 +1092,28 @@ class GPPrefsWorker:
             'changed': pref_elem.get('changed', ''),
             'status': pref_elem.get('status', ''),
             'image': pref_elem.get('image', ''),
-            'bypassErrors': pref_elem.get('bypassErrors', '0') == '1'
+            'desc': pref_elem.get('desc', ''),
         }
+
+        # Handle boolean attributes with special handling for userContext
+        bypass_errors_val = pref_elem.get('bypassErrors', '0')
+        pref['bypassErrors'] = bypass_errors_val == '1'
+
+        user_context_val = pref_elem.get('userContext', '0')
+        if user_context_val.lower() == 'user':
+            pref['userContext'] = True
+        elif user_context_val.lower() == 'machine':
+            pref['userContext'] = False
+        else:
+            pref['userContext'] = user_context_val == '1'
+
+        remove_policy_val = pref_elem.get('removePolicy', '0')
+        pref['removePolicy'] = remove_policy_val == '1'
+
+        # Convert numeric attributes
+        for attr in ('image', 'status'):
+            if pref[attr].isdigit():
+                pref[attr] = int(pref[attr])
 
         # Parse Properties
         props_elem = pref_elem.find('Properties')
@@ -856,6 +1127,40 @@ class GPPrefsWorker:
                     properties[key] = value.lower() == 'true'
                 else:
                     properties[key] = value
+
+            # Parse child elements for specific types
+            if pref['type'] == 'Registry':
+                subprops = []
+                for subprop_elem in props_elem.findall('SubProp'):
+                    subprop = {}
+                    for attr in ['id', 'value', 'mask']:
+                        val = subprop_elem.get(attr)
+                        if val is not None:
+                            if val.isdigit():
+                                subprop[attr] = int(val)
+                            else:
+                                subprop[attr] = val
+                    if subprop:
+                        subprops.append(subprop)
+                if subprops:
+                    properties['SubProp'] = subprops
+
+            elif pref['type'] == 'ScheduledTasks':
+                triggers = []
+                for trigger_elem in props_elem.findall('Triggers/Trigger'):
+                    trigger = {}
+                    for key, value in trigger_elem.items():
+                        if value.isdigit():
+                            trigger[key] = int(value)
+                        elif value.lower() in ('true', 'false'):
+                            trigger[key] = value.lower() == 'true'
+                        else:
+                            trigger[key] = value
+                    if trigger:
+                        triggers.append(trigger)
+                if triggers:
+                    properties['Triggers'] = triggers
+
             pref['properties'] = properties
 
         # Parse Filters
@@ -895,13 +1200,13 @@ class GPPrefsWorker:
         try:
             xml_path = self._get_xml_file_path(gpo_guid, scope, pref_type)
             if not xml_path.exists():
-                logger.debug(f"XML file not found: {xml_path}")
+                logger.debug("XML file not found: {}".format(xml_path))
                 return False
 
             tree = ET.parse(xml_path)
             collection = tree.getroot()
             if collection.tag != 'Collection':
-                logger.warning(f"Root element is not Collection in {xml_path}")
+                logger.warning("Root element is not Collection in {}".format(xml_path))
                 return False
 
             # Find and remove element with matching UID
@@ -916,17 +1221,17 @@ class GPPrefsWorker:
                 # If collection becomes empty, delete the file
                 if len(collection) == 0:
                     xml_path.unlink()
-                    logger.info(f"Deleted empty XML file: {xml_path}")
+                    logger.info("Deleted empty XML file: {}".format(xml_path))
                 else:
                     xml_content = self._pretty_xml(collection)
                     xml_path.write_text(xml_content, encoding='utf-8')
-                    logger.info(f"Deleted preference {uid} from {xml_path}")
+                    logger.info("Deleted preference {} from {}".format(uid, xml_path))
                 return True
             else:
-                logger.debug(f"Preference with UID {uid} not found in {xml_path}")
+                logger.debug("Preference with UID {} not found in {}".format(uid, xml_path))
                 return False
 
         except Exception as e:
-            logger.error(f"Failed to delete preference: {e}")
+            logger.error("Failed to delete preference: {}".format(e))
             logger.error(traceback.format_exc())
             return False
