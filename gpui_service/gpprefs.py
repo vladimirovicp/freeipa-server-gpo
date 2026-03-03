@@ -44,33 +44,33 @@ class GPPrefsWorker:
     """
 
     # CLSID mapping for each preference type (Inner Element CLSID from MS-GPPREF)
-    CLSID_MAP = {
-        'Registry': '{9CD4B2F4-923D-47f5-A062-E897DD1DAD50}',
-        'Files': '{50BE44C8-567A-4ed1-B1D0-9234FE1F38AF}',
-        'Folders': '{07DA02F5-F9CD-4397-A550-4AE21B6B4BD3}',
-        'Shortcuts': '{4F2F7C55-2790-433e-8127-0739D1CFA327}',
-        'Environment': '{78570023-8373-4a19-BA80-2F150738EA19}',
+    OUTER_CLSID_MAP = {
+        'Registry': '{35378EAC-683F-11D2-A89A-00C04FBBCFA2}',
+        'Files': '{79F92669-4224-476C-9C5C-4E6D7D5F8C3B}',
+        'Folders': '{79F92669-4224-476C-9C5C-4E6D7D5F8C3B}',
+        'Shortcuts': '{79F92669-4224-476C-9C5C-4E6D7D5F8C3B}',
+        'Environment': '{78570023-8373-4A19-BA80-2F150738EA19}',
         'IniFiles': '{EEFACE84-D3D8-4680-8D4B-BF103E759448}',
-
-        'Drives': '{935D1B74-9CB8-4e3c-9914-7DD559B7A417}',
-        'Printers': '{9A5E9697-9095-436d-A0EE-4D128FDFBCE5}',  # SharedPrinter (others available)
-        'Services': '{AB6F0B67-341F-4e51-92F9-005FBFBA1A43}',
-        'ScheduledTasks': '{2DEECB1C-261F-4e13-9B21-16FB83BC03BD}',  # Task (others available)
+        'Drives': '{5794DAFD-BE60-433F-88A2-1A31939AC01F}',
+        'Printers': '{BC75B1ED-5833-4858-9BB8-CBF0B166DF9D}',
+        'Services': '{91FBB303-0CD5-4055-BF42-E512A681B325}',
+        'ScheduledTasks': '{AADCED64-746C-4633-A97C-D61349046527}',
+        'NetworkShares': '{B087BE9D-ED37-454F-AF9C-04291E351182}',
     }
 
     # File name mapping (XML file names for each type)
-    FILE_NAME_MAP = {
-        'Registry': 'registry.xml',
-        'Files': 'files.xml',
-        'Folders': 'folders.xml',
-        'Shortcuts': 'shortcuts.xml',
-        'Environment': 'environment.xml',
-        'IniFiles': 'ini.xml',
-
-        'Drives': 'drives.xml',
-        'Printers': 'printers.xml',
-        'Services': 'services.xml',
-        'ScheduledTasks': 'scheduledtasks.xml',
+    INNER_CLSID_MAP = {
+        'Registry': '{9CD4B2F4-923D-47F5-A062-E897DD1DAD50}',
+        'Files': '{50BE44C8-567A-4ED1-B1D0-9234FE1F38AF}',
+        'Folders': '{07DA02F5-F9CD-4397-A550-4AE21B6B4BD3}',
+        'Shortcuts': '{4F2F7C55-2790-433E-8127-0739D1CFA327}',
+        'Environment': '{78570023-8373-4A19-BA80-2F150738EA19}',
+        'IniFiles': '{EEFACE84-D3D8-4680-8D4B-BF103E759448}',
+        'Drives': '{935D1B74-9CB8-4E3C-9914-7DD559B7A417}',
+        'Printers': '{9A5E9697-9095-436D-A0EE-4D128FDFBCE5}',
+        'Services': '{AB6F0B67-341F-4E51-92F9-005FBFBA1A43}',
+        'ScheduledTasks': '{2DEECB1C-261F-4E13-9B21-16FB83BC03BD}',
+        'NetworkShares': '{2888C5E7-94FC-4739-90AA-2C1536D68BC0}',
     }
 
     # Valid actions for each type (U=Update, C=Create, R=Replace, D=Delete)
@@ -80,44 +80,48 @@ class GPPrefsWorker:
     PROPERTY_SCHEMAS = {
         'Registry': {
             'required': ['action', 'hive', 'key', 'name', 'type', 'value'],
-            'optional': [],
+            'optional': ['removePolicy', 'disabled'],
         },
         'Files': {
-            'required': ['action', 'sourcePath', 'targetPath'],
-            'optional': ['readOnly', 'archive', 'hidden', 'suppressErrors'],
+            'required': ['action', 'source', 'destination'],
+            'optional': ['readOnly', 'archive', 'hidden', 'system', 'overwrite', 'suppressErrors', 'removePolicy', 'disabled'],
         },
         'Folders': {
-            'required': ['action', 'targetPath'],
-            'optional': ['readOnly', 'archive', 'hidden', 'suppressErrors'],
+            'required': ['action', 'path'],
+            'optional': ['readOnly', 'archive', 'hidden', 'system', 'suppressErrors', 'removePolicy', 'disabled'],
         },
         'Shortcuts': {
-            'required': ['action', 'targetPath'],
-            'optional': ['shortcutPath', 'arguments', 'iconPath', 'iconIndex', 'windowStyle'],
+            'required': ['action', 'targetPath', 'location'],
+            'optional': ['name', 'arguments', 'workingDirectory', 'iconPath', 'iconIndex', 'windowStyle', 'description', 'removePolicy', 'disabled'],
         },
         'Environment': {
-            'required': ['action', 'user', 'name', 'value'],
-            'optional': ['append', 'remove'],
+            'required': ['action', 'name', 'value', 'userContext'],
+            'optional': ['expand', 'append', 'remove', 'removePolicy', 'disabled'],
         },
         'IniFiles': {
             'required': ['action', 'iniPath', 'section', 'property', 'value'],
-            'optional': [],
+            'optional': ['removePolicy', 'disabled'],
         },
 
         'Drives': {
             'required': ['action', 'driveLetter'],
-            'optional': ['path', 'label', 'persistent', 'useLetter'],
+            'optional': ['path', 'label', 'persistent', 'useLetter', 'removePolicy', 'disabled'],
         },
         'Printers': {
             'required': ['action', 'printerName'],
-            'optional': ['port', 'path', 'location', 'comment', 'default', 'skipLocal'],
+            'optional': ['port', 'path', 'location', 'comment', 'default', 'skipLocal', 'localName', 'removePolicy', 'disabled'],
         },
         'Services': {
             'required': ['action', 'serviceName'],
-            'optional': ['startupType', 'serviceAction', 'arguments', 'waitTimeout'],
+            'optional': ['startupType', 'serviceAction', 'arguments', 'waitTimeout', 'account', 'password', 'removePolicy', 'disabled'],
         },
         'ScheduledTasks': {
             'required': ['action', 'taskName'],
-            'optional': ['runAs', 'command', 'arguments', 'startTime', 'days', 'months'],
+            'optional': ['runAs', 'command', 'arguments', 'startTime', 'days', 'months', 'password', 'taskType', 'trigger', 'startIn', 'enabled', 'hidden', 'name', 'removePolicy', 'disabled'],
+        },
+        'NetworkShares': {
+            'required': ['action', 'path'],
+            'optional': ['label', 'persistent', 'useLetter', 'letter', 'removePolicy', 'disabled'],
         },
     }
 
@@ -231,10 +235,24 @@ class GPPrefsWorker:
             self._validate_registry_properties(properties)
         elif pref_type == 'Files':
             self._validate_files_properties(properties)
+        elif pref_type == 'Folders':
+            self._validate_folders_properties(properties)
+        elif pref_type == 'Shortcuts':
+            self._validate_shortcuts_properties(properties)
         elif pref_type == 'Environment':
             self._validate_environment_properties(properties)
-
-        # Add other type-specific validations as needed
+        elif pref_type == 'IniFiles':
+            self._validate_inifiles_properties(properties)
+        elif pref_type == 'Drives':
+            self._validate_drives_properties(properties)
+        elif pref_type == 'Printers':
+            self._validate_printers_properties(properties)
+        elif pref_type == 'Services':
+            self._validate_services_properties(properties)
+        elif pref_type == 'ScheduledTasks':
+            self._validate_scheduled_tasks_properties(properties)
+        elif pref_type == 'NetworkShares':
+            self._validate_network_shares_properties(properties)
 
     def _validate_registry_properties(self, properties):
         """Validate Registry properties"""
@@ -253,23 +271,171 @@ class GPPrefsWorker:
     def _validate_files_properties(self, properties):
         """Validate Files properties"""
         # Validate paths
-        source = properties.get('sourcePath')
-        target = properties.get('targetPath')
+        source = properties.get('source')
+        destination = properties.get('destination')
         if source and not source.strip():
-            raise ValueError("sourcePath cannot be empty")
-        if target and not target.strip():
-            raise ValueError("targetPath cannot be empty")
+            raise ValueError("source cannot be empty")
+        if destination and not destination.strip():
+            raise ValueError("destination cannot be empty")
 
     def _validate_environment_properties(self, properties):
         """Validate Environment properties"""
-        user = properties.get('user')
-        if user is not None:
-            if isinstance(user, str):
-                if user.lower() not in ['true', 'false', '0', '1']:
-                    raise ValueError("user must be boolean or 'true'/'false'")
-            elif not isinstance(user, bool):
-                raise ValueError("user must be boolean")
+        user_context = properties.get('userContext')
+        if user_context is not None:
+            if isinstance(user_context, str):
+                if user_context.lower() not in ['true', 'false', '0', '1']:
+                    raise ValueError("userContext must be boolean or 'true'/'false'")
+            elif not isinstance(user_context, bool):
+                raise ValueError("userContext must be boolean")
 
+        expand = properties.get('expand')
+        if expand is not None:
+            if isinstance(expand, str):
+                if expand.lower() not in ['true', 'false', '0', '1']:
+                    raise ValueError("expand must be boolean or 'true'/'false'")
+            elif not isinstance(expand, bool):
+                raise ValueError("expand must be boolean")
+
+
+    def _validate_folders_properties(self, properties):
+        """Validate Folders properties"""
+        path = properties.get('path')
+        if path and not path.strip():
+            raise ValueError("path cannot be empty")
+        # Validate boolean properties
+        bool_props = ['readOnly', 'archive', 'hidden', 'system', 'suppressErrors', 'removePolicy', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                elif not isinstance(val, bool):
+                    raise ValueError(f"{prop} must be boolean")
+
+    def _validate_shortcuts_properties(self, properties):
+        """Validate Shortcuts properties"""
+        target_path = properties.get('targetPath')
+        if target_path and not target_path.strip():
+            raise ValueError("targetPath cannot be empty")
+        location = properties.get('location')
+        if location and not location.strip():
+            raise ValueError("location cannot be empty")
+        # Validate boolean properties
+        bool_props = ['removePolicy', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                elif not isinstance(val, bool):
+                    raise ValueError(f"{prop} must be boolean")
+
+    def _validate_network_shares_properties(self, properties):
+        """Validate NetworkShares properties"""
+        path = properties.get('path')
+        if path and not path.strip():
+            raise ValueError("path cannot be empty")
+        # Validate boolean properties
+        bool_props = ['persistent', 'useLetter', 'removePolicy', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                elif not isinstance(val, bool):
+                    raise ValueError(f"{prop} must be boolean")
+
+    def _validate_printers_properties(self, properties):
+        """Validate Printers properties"""
+        printer_name = properties.get('printerName')
+        if printer_name and not printer_name.strip():
+            raise ValueError("printerName cannot be empty")
+        local_name = properties.get('localName')
+        if local_name and not local_name.strip():
+            raise ValueError("localName cannot be empty if provided")
+        # Validate boolean properties
+        bool_props = ['default', 'skipLocal', 'removePolicy', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                elif not isinstance(val, bool):
+                    raise ValueError(f"{prop} must be boolean")
+
+    def _validate_scheduled_tasks_properties(self, properties):
+        """Validate ScheduledTasks properties"""
+        task_name = properties.get('taskName')
+        if task_name and not task_name.strip():
+            raise ValueError("taskName cannot be empty")
+        # Validate boolean properties
+        bool_props = ['enabled', 'hidden', 'removePolicy', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                elif not isinstance(val, bool):
+                    raise ValueError(f"{prop} must be boolean")
+
+    def _validate_services_properties(self, properties):
+        """Validate Services properties"""
+        service_name = properties.get('serviceName')
+        if service_name and not service_name.strip():
+            raise ValueError("serviceName cannot be empty")
+        # Validate boolean properties
+        bool_props = ['removePolicy', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                elif not isinstance(val, bool):
+                    raise ValueError(f"{prop} must be boolean")
+
+    def _validate_drives_properties(self, properties):
+        """Validate Drives properties"""
+        drive_letter = properties.get('driveLetter')
+        if drive_letter and not drive_letter.strip():
+            raise ValueError("driveLetter cannot be empty")
+        # Validate boolean properties
+        bool_props = ['persistent', 'useLetter', 'removePolicy', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                elif not isinstance(val, bool):
+                    raise ValueError(f"{prop} must be boolean")
+
+    def _validate_inifiles_properties(self, properties):
+        """Validate IniFiles properties"""
+        ini_path = properties.get('iniPath')
+        if ini_path and not ini_path.strip():
+            raise ValueError("iniPath cannot be empty")
+        section = properties.get('section')
+        if section and not section.strip():
+            raise ValueError("section cannot be empty")
+        property_name = properties.get('property')
+        if property_name and not property_name.strip():
+            raise ValueError("property cannot be empty")
+        # Validate boolean properties
+        bool_props = ['removePolicy', 'disabled']
+        for prop in bool_props:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ['true', 'false', '0', '1']:
+                        raise ValueError(f"{prop} must be boolean or 'true'/'false'")
+                elif not isinstance(val, bool):
+                    raise ValueError(f"{prop} must be boolean")
 
     def _ensure_uid(self, pref):
         """
@@ -445,6 +611,10 @@ class GPPrefsWorker:
         pref_elem.set('name', pref.get('name', ''))
         pref_elem.set('uid', pref['uid'])
         pref_elem.set('changed', pref['changed'])
+        if 'status' in pref:
+            pref_elem.set('status', str(pref['status']))
+        if 'image' in pref:
+            pref_elem.set('image', str(pref['image']))
 
         bypass_errors = pref.get('bypassErrors', False)
         if bypass_errors:
@@ -669,6 +839,8 @@ class GPPrefsWorker:
             'uid': pref_elem.get('uid', ''),
             'name': pref_elem.get('name', ''),
             'changed': pref_elem.get('changed', ''),
+            'status': pref_elem.get('status', ''),
+            'image': pref_elem.get('image', ''),
             'bypassErrors': pref_elem.get('bypassErrors', '0') == '1'
         }
 
