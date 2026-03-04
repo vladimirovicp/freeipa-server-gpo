@@ -117,13 +117,11 @@ class GPTWorker:
             Tuple of (normalized_gpo_path, policy_type)
             normalized_gpo_path is relative GPO path (string) ready for _get_pol_file_path
         """
-        from pathlib import Path
-
         # Convert to Path object if string
         path = Path(gpo_path) if isinstance(gpo_path, str) else gpo_path
 
         # Check if this looks like a registry.pol file path
-        if path.name == 'Registry.pol' and path.suffix == '.pol':
+        if path.name == 'Registry.pol':
             # Determine policy type from parent directory name
             parent = path.parent.name
             if parent in ('Machine', 'User'):
@@ -179,7 +177,7 @@ class GPTWorker:
             parser = self.pol_parser()
             # Initialize pol_file with signature and version
             parser.pol_file = self.preg.file()
-            parser.pol_file.header.signature = 'PReg'
+            parser.pol_file.header.signature = b'PReg'
             parser.pol_file.header.version = 1
             entries = []
             total_entries = 0
@@ -196,7 +194,6 @@ class GPTWorker:
                             entry.keyname = key_path
                             entry.valuename = value_name if value_name is not None else ''
                             entry.data = self._value_to_samba_data(value_data, samba_type)
-                            entry.size = 0
                             entries.append(entry)
                             total_entries += 1
                     elif isinstance(value_info, tuple) and len(value_info) == 3:
@@ -208,7 +205,6 @@ class GPTWorker:
                         entry.keyname = key_path
                         entry.valuename = value_name if value_name is not None else ''
                         entry.data = self._value_to_samba_data(value_data, samba_type)
-                        entry.size = 0
                         entries.append(entry)
                         total_entries += 1
                     else:
@@ -341,6 +337,8 @@ class GPTWorker:
         Returns:
             Tuple of (value_data, value_type) if found, None otherwise
         """
+        # Normalize GPO path (handles both GPO path and .pol file path)
+        gpo_path, policy_type = self._normalize_gpo_path(gpo_path, policy_type)
         policies = self.read_pol_file(gpo_path, policy_type)
 
         if key_path in policies and value_name in policies[key_path]:
@@ -473,19 +471,21 @@ class GPTWorker:
         Returns:
             Data formatted for preg.entry.data field
         """
-        from samba.dcerpc import misc
+        if not hasattr(self, 'reg_constants'):
+            raise RuntimeError("Samba is not available: cannot convert registry data")
+        misc = self.reg_constants
         if reg_type == misc.REG_SZ or reg_type == misc.REG_EXPAND_SZ:
             return str(value_data) if value_data is not None else ''
         elif reg_type == misc.REG_DWORD or reg_type == misc.REG_DWORD_BIG_ENDIAN or reg_type == misc.REG_QWORD:
             return int(value_data)
         elif reg_type == misc.REG_MULTI_SZ:
             if isinstance(value_data, list):
-                # Join with null characters, double null terminate
+                # Join with null characters, single null terminate (UTF-16LE encodes each char as 2 bytes)
                 if not value_data:
                     return u'\x00'.encode('utf-16le')
                 # Ensure each element is string
                 strings = [str(item) for item in value_data]
-                data = u'\x00'.join(strings) + u'\x00\x00'
+                data = u'\x00'.join(strings) + u'\x00'
                 return data.encode('utf-16le')
             else:
                 # Assume it's a single string with embedded nulls? Not supported.
@@ -519,7 +519,9 @@ class GPTWorker:
         Returns:
             Python value (str, int, list, bytes)
         """
-        from samba.dcerpc import misc
+        if not hasattr(self, 'reg_constants'):
+            raise RuntimeError("Samba is not available: cannot convert registry data")
+        misc = self.reg_constants
         if reg_type == misc.REG_SZ or reg_type == misc.REG_EXPAND_SZ:
             return entry_data if entry_data is not None else ''
         elif reg_type == misc.REG_DWORD or reg_type == misc.REG_DWORD_BIG_ENDIAN or reg_type == misc.REG_QWORD:
@@ -527,11 +529,13 @@ class GPTWorker:
         elif reg_type == misc.REG_MULTI_SZ:
             if entry_data is None:
                 return []
-            # Decode utf-16le, strip trailing nulls, split by null
-            decoded = entry_data.decode('utf-16le').rstrip(u'\x00')
+            # Decode utf-16le, strip only the final null terminator, split by null
+            decoded = entry_data.decode('utf-16le')
+            if decoded.endswith(u'\x00\x00'):
+                decoded = decoded[:-1]
             if decoded == u'':
                 return []
-            return decoded.split(u'\x00')
+            return [s for s in decoded.split(u'\x00') if s != '']
         elif reg_type == misc.REG_BINARY:
             return entry_data if entry_data is not None else b''
         elif reg_type == misc.REG_NONE:
