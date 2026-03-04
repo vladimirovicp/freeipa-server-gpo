@@ -29,6 +29,7 @@ import uuid
 import xml.etree.ElementTree as ET
 from xml.dom import minidom
 import os
+from pathlib import Path
 from datetime import datetime
 import traceback
 import re
@@ -46,9 +47,9 @@ class GPPrefsWorker:
     # CLSID mapping for each preference type (Inner Element CLSID from MS-GPPREF)
     OUTER_CLSID_MAP = {
         'Registry': '{35378EAC-683F-11D2-A89A-00C04FBBCFA2}',
-        'Files': '{79F92669-4224-476C-9C5C-4E6D7D5F8C3B}',
-        'Folders': '{79F92669-4224-476C-9C5C-4E6D7D5F8C3B}',
-        'Shortcuts': '{79F92669-4224-476C-9C5C-4E6D7D5F8C3B}',
+        'Files': '{7B849a34-0AB9-4CFF-92B2-5C5D5B26F0CE}',
+        'Folders': '{B087BE9D-ED37-454F-AF9C-04291E351182}',
+        'Shortcuts': '{C418DD9D-0D14-4EFB-8FBF-CFE535C8FAC7}',
         'Environment': '{78570023-8373-4A19-BA80-2F150738EA19}',
         'IniFiles': '{EEFACE84-D3D8-4680-8D4B-BF103E759448}',
         'Drives': '{5794DAFD-BE60-433F-88A2-1A31939AC01F}',
@@ -174,13 +175,13 @@ class GPPrefsWorker:
             pref_type: Preference type (Registry, Files, etc.)
 
         Returns:
-            string path to the XML file
+            Path object to the XML file
         """
         pref_dir = self._get_preferences_path(gpo_guid, scope)
         xml_file_name = self.FILE_NAME_MAP.get(pref_type)
         if not xml_file_name:
             xml_file_name = "{}.xml".format(pref_type.lower())
-        return os.path.join(pref_dir, pref_type, xml_file_name)
+        return Path(os.path.join(pref_dir, pref_type, xml_file_name))
 
     def _validate_json(self, data):
         """
@@ -299,7 +300,8 @@ class GPPrefsWorker:
                     raise ValueError("{} must be boolean".format(prop))
 
         # Validate numeric properties (xs:unsignedByte)
-        numeric_props = ['bitfield', 'defaultValue', 'value']
+        # Note: 'value' is a registry value string and must NOT be validated as a numeric byte
+        numeric_props = ['bitfield', 'defaultValue']
         for prop in numeric_props:
             val = properties.get(prop)
             if val is not None:
@@ -324,14 +326,11 @@ class GPPrefsWorker:
             raise ValueError("Invalid registry type: {}".format(reg_type))
 
         # Validate default vs name relationship
-        default = properties.get('default')
-        if default and isinstance(default, str):
-            default = default.lower() in ['true', '1']
-        if default and name:
+        # Use key presence check to correctly handle explicit False values
+        has_default = properties.get('default') not in (None, False, 'false', '0')
+        has_name = bool(properties.get('name'))
+        if has_default and has_name:
             raise ValueError("Cannot specify both 'default' and 'name' for registry value")
-        if not default and not name:
-            # This is allowed - configuring only a key
-            pass
 
     def _validate_files_properties(self, properties):
         """Validate Files properties"""
@@ -592,8 +591,10 @@ class GPPrefsWorker:
 
         # Validate letter is a single character A-Z (case insensitive)
         letter = properties.get('letter')
-        if letter and not str(letter).strip().isalpha() or len(str(letter).strip()) != 1:
-            raise ValueError("letter must be a single letter A-Z")
+        if letter is not None:
+            stripped = str(letter).strip()
+            if not stripped.isalpha() or len(stripped) != 1:
+                raise ValueError("letter must be a single letter A-Z")
 
         # Validate persistent, useLetter, disabled as xs:unsignedByte (0-255)
         unsigned_byte_props = ['persistent', 'useLetter', 'disabled']
@@ -980,7 +981,6 @@ class GPPrefsWorker:
         Returns:
             ET.Element for Collection
         """
-        import os
         if os.path.exists(xml_path):
             try:
                 tree = ET.parse(xml_path)
