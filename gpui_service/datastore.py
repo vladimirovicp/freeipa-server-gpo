@@ -25,6 +25,7 @@ import logging
 import json
 import ast
 from parse_admx_structure import AdmxParser
+import utils
 
 logger = logging.getLogger('gpuiservice')
 
@@ -271,7 +272,7 @@ class GPODataStore:
             # value_name and value_type already set from metadata or defaults
 
         # Call GPTWorker
-        resolved_name_gpt = self._resolve_gpo_path(name_gpt)
+        resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
         logger.debug(f"Calling GPTWorker.update_policy_value: name_gpt={name_gpt}, resolved={resolved_name_gpt}, key_path={key_path}, value_name={value_name}, value_data={value_data}, value_type={value_type}, policy_type={policy_type}")
         try:
             success = self.gpt_worker.update_policy_value(
@@ -372,7 +373,7 @@ class GPODataStore:
             policy_type = target
 
         # Resolve UNC or absolute GPO path
-        resolved_name_gpt = self._resolve_gpo_path(name_gpt)
+        resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
 
         # Convert path to registry key format (forward slashes to backslashes)
         key_path = path.replace("/", "\\") if "/" in path else path
@@ -483,7 +484,7 @@ class GPODataStore:
 
             # Resolve gpo_guid if it's a UNC or absolute path
             if 'gpo_guid' in data:
-                resolved_guid = self._resolve_gpo_path(data['gpo_guid'])
+                resolved_guid = utils.resolve_gpo_path(data['gpo_guid'], self.sysvol_path)
                 data['gpo_guid'] = resolved_guid
 
             result = self.gpprefs_worker.save_preferences(data)
@@ -512,7 +513,7 @@ class GPODataStore:
             return {}
 
         try:
-            resolved_gpo_guid = self._resolve_gpo_path(gpo_guid)
+            resolved_gpo_guid = utils.resolve_gpo_path(gpo_guid, self.sysvol_path)
             return self.gpprefs_worker.read_preferences(resolved_gpo_guid, scope, pref_type)
         except Exception as exp:
             logger.error(f"Failed to get preferences: {exp}")
@@ -536,7 +537,7 @@ class GPODataStore:
             return False
 
         try:
-            resolved_gpo_guid = self._resolve_gpo_path(gpo_guid)
+            resolved_gpo_guid = utils.resolve_gpo_path(gpo_guid, self.sysvol_path)
             success = self.gpprefs_worker.delete_preference(resolved_gpo_guid, scope, pref_type, uid)
             if success:
                 # TODO: Update GPO version in LDAP and GPT.INI
@@ -546,50 +547,6 @@ class GPODataStore:
             logger.error(f"Failed to delete preference: {exp}")
             return False
 
-    def _resolve_gpo_path(self, path):
-        """
-        Resolve UNC or absolute GPO path to relative path within sysvol
-
-        Args:
-            path: UNC path (e.g., \\\\gpo.dev\\SysVol\\gpo.dev\\Policies\\{GUID}),
-                  absolute path, or relative GPO identifier
-
-        Returns:
-            Relative path to GPO directory within sysvol (e.g., 'gpo.dev/Policies/{GUID}')
-        """
-
-        # If path is already a relative path (no drive/UNC prefix), return as-is
-        if isinstance(path, str):
-            # Check for UNC prefix (\\)
-            if path.startswith('\\\\'):
-                # UNC path: \\server\share\path...
-                # Remove UNC prefix and split
-                parts = path.split('\\')
-                # parts[0] is empty, parts[1] is empty, parts[2] is server, parts[3] is share
-                if len(parts) >= 5:
-                    # Remove server and share (first two non-empty parts)
-                    # Keep everything after share as path components
-                    # Example: \\gpo.dev\SysVol\gpo.dev\Policies\{GUID}
-                    # parts: ['', '', 'gpo.dev', 'SysVol', 'gpo.dev', 'Policies', '{GUID}']
-                    # We want: 'gpo.dev/Policies/{GUID}'
-                    # So skip first 4 parts (empty, empty, server, share)
-                    local_parts = parts[4:]
-                    resolved = '/'.join(local_parts)
-                    # Replace backslashes with forward slashes for consistency
-                    resolved = resolved.replace('\\', '/')
-                    return resolved
-                else:
-                    # Malformed UNC, treat as relative path
-                    return path.replace('\\', '/')
-            # Check for absolute path starting with sysvol_path
-            if path.startswith(self.sysvol_path):
-                # Remove sysvol_path prefix
-                rel_path = path[len(self.sysvol_path):].lstrip('/')
-                return rel_path.replace('\\', '/')
-            # Already relative path, normalize separators
-            return path.replace('\\', '/')
-
-        return str(path)
 
     def _update_gpo_version(self, json_data):
         """

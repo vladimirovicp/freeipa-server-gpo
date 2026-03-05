@@ -23,6 +23,7 @@ Uses Samba GPPolParser for reading/writing Group Policy registry.pol files
 import logging
 from pathlib import Path
 import traceback
+import utils
 
 logger = logging.getLogger('gpuiservice')
 
@@ -134,13 +135,17 @@ class GPTWorker:
                 except ValueError:
                     # Path is not under sysvol_path, treat as absolute GPO path
                     # Return absolute path as string
-                    return str(path.parent.parent), policy_type
+                    abs_path = str(path.parent.parent)
+                    resolved_path = utils.resolve_gpo_path(abs_path, str(self.sysvol_path))
+                    return resolved_path, policy_type
             # If parent not Machine/User, fall through
 
         # Not a .pol file path, treat as GPO path
         # Convert to string if it's a Path
         if isinstance(gpo_path, Path):
             gpo_path = str(gpo_path)
+        # Resolve UNC or absolute path to relative sysvol path
+        gpo_path = utils.resolve_gpo_path(gpo_path, str(self.sysvol_path))
         return gpo_path, policy_type
 
     def create_pol_file(self, gpo_path, policy_type='Machine', policies=None):
@@ -177,7 +182,7 @@ class GPTWorker:
             parser = self.pol_parser()
             # Initialize pol_file with signature and version
             parser.pol_file = self.preg.file()
-            parser.pol_file.header.signature = b'PReg'
+            parser.pol_file.header.signature = 'PReg'
             parser.pol_file.header.version = 1
             entries = []
             total_entries = 0
@@ -337,6 +342,9 @@ class GPTWorker:
         Returns:
             Tuple of (value_data, value_type) if found, None otherwise
         """
+        if not self.pol_parser:
+            logger.error("Cannot get policy value: Samba GPPolParser not available")
+            return None
         # Normalize GPO path (handles both GPO path and .pol file path)
         gpo_path, policy_type = self._normalize_gpo_path(gpo_path, policy_type)
         policies = self.read_pol_file(gpo_path, policy_type)
@@ -480,12 +488,13 @@ class GPTWorker:
             return int(value_data)
         elif reg_type == misc.REG_MULTI_SZ:
             if isinstance(value_data, list):
-                # Join with null characters, single null terminate (UTF-16LE encodes each char as 2 bytes)
+                # Join with null characters, double null terminate (UTF-16LE)
                 if not value_data:
-                    return u'\x00'.encode('utf-16le')
+                    # Empty list encoded as double null terminator (two null characters)
+                    return b'\x00\x00\x00\x00'
                 # Ensure each element is string
                 strings = [str(item) for item in value_data]
-                data = u'\x00'.join(strings) + u'\x00'
+                data = u'\x00'.join(strings) + u'\x00\x00'
                 return data.encode('utf-16le')
             else:
                 # Assume it's a single string with embedded nulls? Not supported.
@@ -529,13 +538,25 @@ class GPTWorker:
         elif reg_type == misc.REG_MULTI_SZ:
             if entry_data is None:
                 return []
-            # Decode utf-16le, strip only the final null terminator, split by null
+            # Decode utf-16le, preserve empty strings
             decoded = entry_data.decode('utf-16le')
-            if decoded.endswith(u'\x00\x00'):
-                decoded = decoded[:-1]
-            if decoded == u'':
+            if not decoded:
                 return []
-            return [s for s in decoded.split(u'\x00') if s != '']
+            total_nulls = decoded.count(u'\x00')
+            if total_nulls == 0:
+                # Malformed REG_MULTI_SZ (no null terminators), treat as single string
+                return [decoded]
+            # Number of strings = total_nulls - 1 (extra terminator)
+            num_strings = total_nulls - 1
+            parts = decoded.split(u'\x00')
+            # Remove last empty part caused by final null terminator
+            if parts and parts[-1] == u'':
+                parts.pop()
+            # Now parts length should be total_nulls (delimiters)
+            if num_strings <= len(parts):
+                return parts[:num_strings]
+            else:
+                return parts
         elif reg_type == misc.REG_BINARY:
             return entry_data if entry_data is not None else b''
         elif reg_type == misc.REG_NONE:
