@@ -50,13 +50,13 @@ class GPPrefsWorker:
         'Files': '{7B849a34-0AB9-4CFF-92B2-5C5D5B26F0CE}',
         'Folders': '{B087BE9D-ED37-454F-AF9C-04291E351182}',
         'Shortcuts': '{C418DD9D-0D14-4EFB-8FBF-CFE535C8FAC7}',
-        'Environment': '{78570023-8373-4A19-BA80-2F150738EA19}',
+        'Environment': '{BF141A63-327B-438a-B9BF-2C188F13B7AD}',
         'IniFiles': '{EEFACE84-D3D8-4680-8D4B-BF103E759448}',
         'Drives': '{5794DAFD-BE60-433F-88A2-1A31939AC01F}',
-        'Printers': '{BC75B1ED-5833-4858-9BB8-CBF0B166DF9D}',
+        'Printers': '{1F577D12-3D1B-471e-A1B7-060317597B9C}',
         'Services': '{91FBB303-0CD5-4055-BF42-E512A681B325}',
         'ScheduledTasks': '{AADCED64-746C-4633-A97C-D61349046527}',
-        'NetworkShares': '{B087BE9D-ED37-454F-AF9C-04291E351182}',
+        'NetworkShares': '{520870D8-A6E7-47e8-A8D8-E6A4E76EAEC2}',
     }
 
     # File name mapping (XML file names for each type)
@@ -148,7 +148,7 @@ class GPPrefsWorker:
         Args:
             sysvol_path: Path to FreeIPA sysvol directory where GPT structures are stored
         """
-        self.sysvol_path = sysvol_path
+        self.sysvol_path = Path(sysvol_path)
         logger.debug("GPPrefsWorker initialized with sysvol path: {}".format(sysvol_path))
 
     def _get_preferences_path(self, gpo_guid, scope):
@@ -163,7 +163,7 @@ class GPPrefsWorker:
             string path to the Preferences directory
         """
         # Structure: sysvol_path/{gpo_guid}/{scope}/Preferences
-        return os.path.join(self.sysvol_path, gpo_guid, scope, 'Preferences')
+        return self.sysvol_path / gpo_guid / scope / 'Preferences'
 
     def _get_xml_file_path(self, gpo_guid, scope, pref_type):
         """
@@ -181,7 +181,7 @@ class GPPrefsWorker:
         xml_file_name = self.FILE_NAME_MAP.get(pref_type)
         if not xml_file_name:
             xml_file_name = "{}.xml".format(pref_type.lower())
-        return Path(os.path.join(pref_dir, pref_type, xml_file_name))
+        return pref_dir / pref_type / xml_file_name
 
     def _validate_json(self, data):
         """
@@ -213,7 +213,7 @@ class GPPrefsWorker:
                 raise ValueError("Preference {} missing 'properties'".format(pref.get('uid', 'unknown')))
             # Validate action if present
             if 'action' in pref['properties']:
-                if pref['properties']['action'] not in self.VALID_ACTIONS:
+                if pref['properties']['action'].upper() not in self.VALID_ACTIONS:
                     raise ValueError("Invalid action: {}".format(pref['properties']['action']))
 
             # Validate properties for the specific type
@@ -285,8 +285,8 @@ class GPPrefsWorker:
 
         # Validate action enum
         action = properties.get('action')
-        if action and action not in ['C', 'D', 'R', 'U']:
-            raise ValueError("Invalid action: {}. Must be C, D, R, or U".format(action))
+        if action and action.upper() not in self.VALID_ACTIONS:
+            raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
 
         # Validate boolean properties
         bool_props = ['default', 'displayDecimal', 'disabled']
@@ -327,7 +327,7 @@ class GPPrefsWorker:
 
         # Validate default vs name relationship
         # Use key presence check to correctly handle explicit False values
-        has_default = properties.get('default') not in (None, False, 'false', '0')
+        has_default = properties.get('default') not in (None, False, 'false', '0', 0)
         has_name = bool(properties.get('name'))
         if has_default and has_name:
             raise ValueError("Cannot specify both 'default' and 'name' for registry value")
@@ -364,8 +364,8 @@ class GPPrefsWorker:
 
         # Validate action enum
         action = properties.get('action')
-        if action and action not in ['C', 'D', 'R', 'U']:
-            raise ValueError("Invalid action: {}. Must be C, D, R, or U".format(action))
+        if action and action.upper() not in self.VALID_ACTIONS:
+            raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
 
         # Validate boolean properties
         bool_props = ['user', 'partial', 'disabled']
@@ -388,8 +388,8 @@ class GPPrefsWorker:
 
         # Validate action enum
         action = properties.get('action')
-        if action and action not in ['C', 'D', 'R', 'U']:
-            raise ValueError("Invalid action: {}. Must be C, D, R, or U".format(action))
+        if action and action.upper() not in self.VALID_ACTIONS:
+            raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
 
         # Validate required boolean properties (readOnly, archive, hidden)
         bool_props = ['readOnly', 'archive', 'hidden', 'disabled']
@@ -647,7 +647,7 @@ class GPPrefsWorker:
             preference dict with ensured UID
         """
         if 'uid' not in pref or not pref['uid']:
-            pref['uid'] = str(uuid.uuid4()).upper()
+            pref['uid'] = '{' + str(uuid.uuid4()).upper() + '}'
         else:
             # Validate GUID format
             uid = pref['uid']
@@ -694,7 +694,8 @@ class GPPrefsWorker:
             from Crypto.Util.Padding import pad
             import base64
 
-            # AES-256-CBC with IV of zeros
+            # AES-256-CBC with IV of zeros (per MS-GPPREF specification)
+            # Note: Zero IV is intentionally used by Microsoft's GPP implementation
             iv = b'\x00' * 16
             cipher = AES.new(key, AES.MODE_CBC, iv)
             # Pad password to 16-byte boundary
@@ -1027,7 +1028,7 @@ class GPPrefsWorker:
         Returns:
             Pretty-printed XML string
         """
-        rough_string = ET.tostring(element, 'utf-8')
+        rough_string = ET.tostring(element, encoding='unicode')
         parsed = minidom.parseString(rough_string)
         # toprettyxml already includes XML declaration
         return parsed.toprettyxml(indent='  ')
@@ -1049,7 +1050,7 @@ class GPPrefsWorker:
         if pref_type:
             types_to_read = [pref_type]
         else:
-            types_to_read = self.OUTER_CLSID_MAP.keys()
+            types_to_read = list(self.OUTER_CLSID_MAP.keys())
 
         for ptype in types_to_read:
             try:
@@ -1112,8 +1113,10 @@ class GPPrefsWorker:
 
         # Convert numeric attributes
         for attr in ('image', 'status'):
-            if pref[attr].isdigit():
+            try:
                 pref[attr] = int(pref[attr])
+            except ValueError:
+                pass
 
         # Parse Properties
         props_elem = pref_elem.find('Properties')
@@ -1121,12 +1124,13 @@ class GPPrefsWorker:
             properties = {}
             for key, value in props_elem.items():
                 # Convert numeric strings to int if possible
-                if value.isdigit():
+                try:
                     properties[key] = int(value)
-                elif value.lower() in ('true', 'false'):
-                    properties[key] = value.lower() == 'true'
-                else:
-                    properties[key] = value
+                except ValueError:
+                    if value.lower() in ('true', 'false'):
+                        properties[key] = value.lower() == 'true'
+                    else:
+                        properties[key] = value
 
             # Parse child elements for specific types
             if pref['type'] == 'Registry':
@@ -1136,9 +1140,9 @@ class GPPrefsWorker:
                     for attr in ['id', 'value', 'mask']:
                         val = subprop_elem.get(attr)
                         if val is not None:
-                            if val.isdigit():
+                            try:
                                 subprop[attr] = int(val)
-                            else:
+                            except ValueError:
                                 subprop[attr] = val
                     if subprop:
                         subprops.append(subprop)
@@ -1150,12 +1154,13 @@ class GPPrefsWorker:
                 for trigger_elem in props_elem.findall('Triggers/Trigger'):
                     trigger = {}
                     for key, value in trigger_elem.items():
-                        if value.isdigit():
+                        try:
                             trigger[key] = int(value)
-                        elif value.lower() in ('true', 'false'):
-                            trigger[key] = value.lower() == 'true'
-                        else:
-                            trigger[key] = value
+                        except ValueError:
+                            if value.lower() in ('true', 'false'):
+                                trigger[key] = value.lower() == 'true'
+                            else:
+                                trigger[key] = value
                     if trigger:
                         triggers.append(trigger)
                 if triggers:
@@ -1173,12 +1178,13 @@ class GPPrefsWorker:
             for filter_elem in filters_elem:
                 condition = {'type': filter_elem.tag.replace('Filter', '')}
                 for key, value in filter_elem.items():
-                    if value.isdigit():
+                    try:
                         condition[key] = int(value)
-                    elif value.lower() in ('true', 'false'):
-                        condition[key] = value.lower() == 'true'
-                    else:
-                        condition[key] = value
+                    except ValueError:
+                        if value.lower() in ('true', 'false'):
+                            condition[key] = value.lower() == 'true'
+                        else:
+                            condition[key] = value
                 filters['conditions'].append(condition)
             pref['filters'] = filters
 
