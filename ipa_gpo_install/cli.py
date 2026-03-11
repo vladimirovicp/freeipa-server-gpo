@@ -162,11 +162,15 @@ def execute_required_actions(actions: IPAActions, check_results: Dict[str, Any])
     if not actions.are_plugins_activated():
         if not run_task(_("Activate plugins"), actions.activate_plugins):
             return False
-        # Restart oddjob after plugin activation
-        if not run_task(_("Restart oddjob service"), actions.restart_oddjob):
-            return False
     else:
         logger.info(_("Plugins already activated"))
+
+    if not run_task(_("Restart oddjob service"), actions.restart_oddjob):
+        return False
+
+    # Start GPUIService if not already running
+    if not run_task(_("Start GPUIService"), actions.start_gpuiservice):
+        return False
 
     if not check_results['schema_complete']:
         logger.warning(_("About to perform irreversible schema update"))
