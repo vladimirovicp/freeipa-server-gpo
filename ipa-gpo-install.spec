@@ -1,4 +1,5 @@
 %add_python3_req_skip parse_admx_structure
+%add_python3_req_skip utils
 
 Name:           freeipa-server-gpo
 Version:        0.0.6
