@@ -29,7 +29,7 @@ logger = logging.getLogger('gpuiservice')
 # $(string.ID)
 STRING_REF = re.compile(r"\$\(\s*string\.([A-Za-z0-9_.-]+)\s*\)")
 # $(presentation.ID)
-PRESENTATION_REF = re.compile(r"\$\(\s*presentation\.([A-Za-z0-9_.-]+)\s*\)")
+PRESENTATION_REF = re.compile(r"\$\(\s*presentation\.\s*([A-Za-z0-9_.-]+)\s*\)")
 
 
 class AdmxParser:
