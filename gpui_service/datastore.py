@@ -75,7 +75,7 @@ class GPODataStore:
                     # POLICIES: terminal node
                     if part == "policies":
                         policy_name = "/".join(parts[i+1:])
-                        policy_name = bytes(policy_name, "utf-8").decode("unicode_escape")
+                        policy_name = AdmxParser.normalize_registry_key(policy_name)
                         return current.get("policies", {}).get(policy_name)
 
                     if part not in current:
@@ -126,8 +126,8 @@ class GPODataStore:
             logger.error("name_gpt parameter is required")
             return False
 
-        # Convert path to registry key format (forward slashes to backslashes)
-        key_path = path.replace("/", "\\") if "/" in path else path
+        # Convert path to registry key format and normalize backslashes
+        key_path = AdmxParser.normalize_registry_key(path)
 
         # Convert DBus types to native Python types
         if hasattr(value, '__class__') and value.__class__.__module__.startswith('dbus'):
@@ -310,7 +310,7 @@ class GPODataStore:
         value_name = ''
 
         # Normalize backslashes
-        key_path_norm = key_path.replace('/', '\\')
+        key_path_norm = AdmxParser.normalize_registry_key(key_path)
         parts = key_path_norm.split('\\')
         parent = '\\'.join(parts[:-1]) if len(parts) > 1 else ''
         last_part = parts[-1] if len(parts) >= 1 else ''
@@ -320,8 +320,8 @@ class GPODataStore:
         # Normalize meta_key if present
         meta_key_norm = None
         if meta_key:
-            meta_key_norm = meta_key.replace('/', '\\')
-        parent_norm = parent.replace('/', '\\') if parent else ''
+            meta_key_norm = AdmxParser.normalize_registry_key(meta_key)
+        parent_norm = AdmxParser.normalize_registry_key(parent) if parent else ''
 
         # If meta_key matches parent, treat last component as value name (override metadata)
         if meta_key_norm and parent_norm and meta_key_norm == parent_norm:
@@ -375,8 +375,8 @@ class GPODataStore:
         # Resolve UNC or absolute GPO path
         resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
 
-        # Convert path to registry key format (forward slashes to backslashes)
-        key_path = path.replace("/", "\\") if "/" in path else path
+        # Convert path to registry key format and normalize backslashes
+        key_path = AdmxParser.normalize_registry_key(path)
         # Use empty string for default value name
         value_name = ''
         # Try to extract value_name from key_path (last component)

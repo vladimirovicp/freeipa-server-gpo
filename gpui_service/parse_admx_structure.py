@@ -365,6 +365,25 @@ class AdmxParser:
         return supported_on_ref
 
     @staticmethod
+    def normalize_registry_key(key: str) -> str:
+        """
+        Normalize registry key to use single backslashes internally.
+        Converts forward slashes to backslashes, collapses double backslashes,
+        and ensures proper single-backslash format.
+        """
+        if not key:
+            return key
+        # Replace forward slashes with backslashes
+        normalized = key.replace("/", "\\")
+        # Collapse multiple backslashes to single backslash
+        while "\\\\" in normalized:
+            normalized = normalized.replace("\\\\", "\\")
+        # Remove trailing backslash if present (except for root)
+        if normalized.endswith("\\") and len(normalized) > 1:
+            normalized = normalized.rstrip("\\")
+        return normalized
+
+    @staticmethod
     def data_ref(heavykey: str) -> str:
         return f"Read_Path_GPT('{heavykey}')"
 
@@ -562,7 +581,7 @@ class AdmxParser:
             "name": pol.attrib.get("name"),
             "displayName": self.resolve_string(pol.attrib.get("displayName")),
             "explainText": self.resolve_string(pol.attrib.get("explainText")),
-            "key": (pol.attrib.get("key") or "").replace("/", "\\"),
+            "key": self.normalize_registry_key(pol.attrib.get("key") or ""),
             "valueName": pol.attrib.get("valueName") or pol.attrib.get("valuename"),
             "presentation": pol.attrib.get("presentation"),
             "parentCategory": None,
@@ -591,7 +610,7 @@ class AdmxParser:
         if pv_meta is not None:
             base_key = header.get("key") or ""
             vn = header.get("valueName") or ""
-            heavykey = f"{base_key}\\{vn}".rstrip("\\")
+            heavykey = self.normalize_registry_key(f"{base_key}\\{vn}")
             policy_obj[heavykey] = self.wrap_metadata_with_data(pv_meta, heavykey)
             return policy_obj
 
@@ -613,31 +632,31 @@ class AdmxParser:
             if local == "enum":
                 meta = self._parse_enum_metadata(el, pres_info)
                 vn = (el.attrib.get("valueName") or "").strip()
-                heavykey = f"{base_key}\\{vn}".rstrip("\\")
+                heavykey = self.normalize_registry_key(f"{base_key}\\{vn}")
                 policy_obj[heavykey] = self.wrap_metadata_with_data(meta, heavykey)
 
             elif local == "boolean":
                 meta = self._parse_boolean_metadata(el, pres_info)
-                k = (el.attrib.get("key") or "").replace("/", "\\")
+                k = self.normalize_registry_key(el.attrib.get("key") or "")
                 vn = (el.attrib.get("valueName") or "").strip()
-                heavykey = f"{k}\\{vn}".rstrip("\\")
+                heavykey = self.normalize_registry_key(f"{k}\\{vn}")
                 policy_obj[heavykey] = self.wrap_metadata_with_data(meta, heavykey)
 
             elif local == "text":
                 meta = self._parse_text_metadata(el, pres_info)
                 vn = (el.attrib.get("valueName") or "").strip()
-                heavykey = f"{base_key}\\{vn}".rstrip("\\")
+                heavykey = self.normalize_registry_key(f"{base_key}\\{vn}")
                 policy_obj[heavykey] = self.wrap_metadata_with_data(meta, heavykey)
 
             elif local == "list":
                 meta = self._parse_list_metadata(el, pres_info)
-                k = (el.attrib.get("key") or "").replace("/", "\\")
+                k = self.normalize_registry_key(el.attrib.get("key") or "")
                 policy_obj[k] = self.wrap_metadata_with_data(meta, k)
 
             elif local == "decimal":
                 meta = self._parse_decimal_metadata(el, pres_info)
                 vn = (el.attrib.get("valueName") or "").strip()
-                heavykey = f"{base_key}\\{vn}".rstrip("\\")
+                heavykey = self.normalize_registry_key(f"{base_key}\\{vn}")
                 policy_obj[heavykey] = self.wrap_metadata_with_data(meta, heavykey)
 
         return policy_obj
