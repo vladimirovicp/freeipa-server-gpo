@@ -23,7 +23,7 @@ import sys
 import signal
 import threading
 import traceback
-from gi.repository import GLib
+from gi.repository import GLib, Gio
 import dbus
 import dbus.mainloop.glib
 import logging
@@ -50,6 +50,34 @@ class ServiceDaemon:
         self.data_store = None
         self.monitor = None
         self.shutdown_event = threading.Event()
+
+    def get_monitor_path(self):
+        """Get ADMX monitor path from GSettings or use default"""
+        default_path = '/usr/share/PolicyDefinitions'
+        try:
+            settings = Gio.Settings.new('org.altlinux.gpuiservice')
+            path = settings.get_string('monitor-path')
+            if path:
+                logger.info(f"Using monitor path from GSettings: {path}")
+                return path
+        except Exception as e:
+            logger.debug(f"Could not read monitor-path from GSettings: {e}")
+        logger.info(f"Using default monitor path: {default_path}")
+        return default_path
+
+    def get_sysvol_path(self):
+        """Get FreeIPA sysvol path from GSettings or use default"""
+        default_path = '/var/lib/freeipa/sysvol'
+        try:
+            settings = Gio.Settings.new('org.altlinux.gpuiservice')
+            path = settings.get_string('sysvol-path')
+            if path:
+                logger.info(f"Using sysvol path from GSettings: {path}")
+                return path
+        except Exception as e:
+            logger.debug(f"Could not read sysvol-path from GSettings: {e}")
+        logger.info(f"Using default sysvol path: {default_path}")
+        return default_path
 
     def setup_signal_handlers(self):
         """Setup signal handlers for graceful shutdown"""
@@ -78,8 +106,10 @@ class ServiceDaemon:
             logger.debug(f"Bus name acquired: {bus_name}")
 
             # Create data store
-            self.data_store = GPODataStore()
-            self.data_store.load_from_directory()
+            sysvol_path = self.get_sysvol_path()
+            monitor_path = self.get_monitor_path()
+            self.data_store = GPODataStore(sysvol_path)
+            self.data_store.load_from_directory(monitor_path)
 
             logger.debug(f"self.data_store_dict {type(self.data_store)}")
 
