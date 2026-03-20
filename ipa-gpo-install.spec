@@ -40,6 +40,7 @@ make install PREFIX=%_prefix DESTDIR=%buildroot PYTHON_SITELIBDIR=%python3_sitel
 %doc README.md
 %doc README.ru.md
 %_bindir/ipa-gpo-install
+%_bindir/ipa-gpo-update-paths
 %python3_sitelibdir/ipa_gpo_install/
 %python3_sitelibdir/ipaserver/plugins/gpo.py*
 %python3_sitelibdir/ipaserver/plugins/chain.py*

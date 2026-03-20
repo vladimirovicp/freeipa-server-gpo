@@ -20,6 +20,7 @@ install: build
 
 	# Main executable
 	install -D -m 755 bin/ipa-gpo-install $(DESTDIR)$(PREFIX)/bin/ipa-gpo-install
+	install -D -m 755 bin/ipa-gpo-update-paths $(DESTDIR)$(PREFIX)/bin/ipa-gpo-update-paths
 
 	# Python modules
 	@mkdir -p $(DESTDIR)$(PYTHON_SITELIBDIR)
