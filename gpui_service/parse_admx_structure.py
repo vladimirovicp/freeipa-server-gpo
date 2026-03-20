@@ -368,20 +368,23 @@ class AdmxParser:
     def normalize_registry_key(key: str) -> str:
         """
         Normalize registry key to use single backslashes internally.
-        Converts forward slashes to backslashes, collapses double backslashes,
+        Converts forward slashes to backslashes, collapses multiple backslashes,
         and ensures proper single-backslash format.
         """
         if not key:
             return key
+
         # Replace forward slashes with backslashes
-        normalized = key.replace("/", "\\")
-        # Collapse multiple backslashes to single backslash
-        while "\\\\" in normalized:
-            normalized = normalized.replace("\\\\", "\\")
-        # Remove trailing backslash if present (except for root)
-        if normalized.endswith("\\") and len(normalized) > 1:
-            normalized = normalized.rstrip("\\")
-        return normalized
+        result = key.replace("/", "\\")
+
+        # Collapse any sequence of backslashes to a single backslash
+        result = re.sub(r"\\{2,}", r"\\", result)
+
+        # Remove trailing backslash if present (except for root keys)
+        if result.endswith("\\") and len(result) > 1:
+            result = result.rstrip("\\")
+
+        return result
 
     @staticmethod
     def data_ref(heavykey: str) -> str:

@@ -75,7 +75,6 @@ class GPODataStore:
                     # POLICIES: terminal node
                     if part == "policies":
                         policy_name = "/".join(parts[i+1:])
-                        policy_name = AdmxParser.normalize_registry_key(policy_name)
                         return current.get("policies", {}).get(policy_name)
 
                     if part not in current:
