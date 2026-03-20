@@ -23,6 +23,7 @@ import dbus
 import dbus.service
 import logging
 import json
+import subprocess
 
 logger = logging.getLogger('gpuiservice')
 
@@ -96,6 +97,11 @@ class GPUIService(dbus.service.Object):
                     <arg name="scope" direction="in" type="s"/>
                     <arg name="pref_type" direction="in" type="s"/>
                     <arg name="uid" direction="in" type="s"/>
+                    <arg name="success" direction="out" type="b"/>
+                    </method>
+                    <method name="update_paths">
+                    <arg name="monitor_path" direction="in" type="s"/>
+                    <arg name="sysvol_path" direction="in" type="s"/>
                     <arg name="success" direction="out" type="b"/>
                     </method>
                 </interface>
@@ -293,4 +299,45 @@ class GPUIService(dbus.service.Object):
             return self.data_store.delete_preference(gpo_guid, scope, pref_type, uid)
         except Exception as e:
             logger.error(f"Failed to delete preference: {e}")
+            return False
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='ss', out_signature='b')
+    def update_paths(self, monitor_path, sysvol_path):
+        """
+        Update GPUIService paths (ADMX directory and sysvol directory)
+
+        Args:
+            monitor_path: ADMX policy definitions directory (empty string to keep current)
+            sysvol_path: FreeIPA sysvol directory (empty string to keep current)
+
+        Returns:
+            True if successful, False otherwise
+        """
+        logger.info(f"update_paths method called with monitor_path: {monitor_path}, sysvol_path: {sysvol_path}")
+
+        # Build command
+        cmd = ['ipa-gpo-update-paths']
+        if monitor_path:
+            cmd.extend(['--monitor-path', monitor_path])
+        if sysvol_path:
+            cmd.extend(['--sysvol-path', sysvol_path])
+
+        # At least one path must be provided
+        if len(cmd) == 1:
+            logger.error("No paths specified")
+            return False
+
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True, timeout=30)
+            if result.returncode == 0:
+                logger.info("Paths updated successfully")
+                return True
+            else:
+                logger.error(f"Failed to update paths: {result.stderr}")
+                return False
+        except subprocess.TimeoutExpired:
+            logger.error("Timeout updating paths")
+            return False
+        except Exception as e:
+            logger.error(f"Error updating paths: {e}")
             return False
