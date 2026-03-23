@@ -71,8 +71,37 @@ class GPODataStore:
                 part = parts[i]
 
                 if isinstance(current, dict):
+                    # Check if this is a category node
+                    if "category" in current:
+                        # Category node: check for inherited subcategories or policies
+                        if part == "policies":
+                            policy_name = "/".join(parts[i+1:])
+                            return current.get("policies", {}).get(policy_name)
 
-                    # POLICIES: terminal node
+                        # Look for inherited subcategory
+                        inherited_list = current.get("inherited", [])
+                        found_inherited = next(
+                            (
+                                item for item in inherited_list
+                                if isinstance(item, dict) and item.get("category") == part
+                            ),
+                            None
+                        )
+                        if found_inherited:
+                            current = found_inherited
+                            i += 1
+                            continue
+
+                        # Not found in inherited, check other keys
+                        if part not in current:
+                            return None
+
+                        current = current[part]
+                        i += 1
+                        continue
+
+                    # Regular dictionary (not a category node)
+                    # POLICIES: terminal node (for uncategorizedPolicies etc.)
                     if part == "policies":
                         policy_name = "/".join(parts[i+1:])
                         return current.get("policies", {}).get(policy_name)
@@ -413,8 +442,42 @@ class GPODataStore:
 
                 # Case 1: next level is a dictionary
                 if isinstance(current, dict):
+                    # Check if this is a category node
+                    if "category" in current:
+                        # Category node: check for inherited subcategories or policies
+                        if part == "policies":
+                            policies = current.get("policies", {})
+                            if isinstance(policies, dict):
+                                return [
+                                    {"name": key, "help": policy.get("header", {}).get("explainText", "")}
+                                    for key, policy in policies.items()
+                                ]
+                            return []
 
-                    # POLICIES: terminal node
+                        # Look for inherited subcategory
+                        inherited_list = current.get("inherited", [])
+                        found_inherited = next(
+                            (
+                                item for item in inherited_list
+                                if isinstance(item, dict) and item.get("category") == part
+                            ),
+                            None
+                        )
+                        if found_inherited:
+                            current = found_inherited
+                            i += 1
+                            continue
+
+                        # Not found in inherited, check other keys
+                        if part not in current:
+                            return []
+
+                        current = current[part]
+                        i += 1
+                        continue
+
+                    # Regular dictionary (not a category node)
+                    # POLICIES: terminal node (for uncategorizedPolicies etc.)
                     if part == "policies":
                         policies = current.get("policies", {})
                         if isinstance(policies, dict):
