@@ -522,34 +522,38 @@ class GPODataStore:
                     if isinstance(item, dict) and "category" in item
                 ]
 
-            if isinstance(current, dict) and "category" in current:
-                # Category node with inherited subcategories and policies
-                children = []
-                # Add inherited subcategories
-                for inherited in current.get("inherited", []):
-                    children.append({
-                        "name": inherited.get("category", ""),
-                        "help": inherited.get("help", "")
-                    })
-                # Add policies
-                policies = current.get("policies", {})
-                if isinstance(policies, dict):
-                    for key, policy in policies.items():
-                        children.append({
-                            "name": key,
-                            "help": policy.get("header", {}).get("explainText", "")
-                        })
-                return children
-
             if isinstance(current, dict):
-                # Regular dict (meta, Machine, User, categories, uncategorizedPolicies)
+                # Check if this is a category node
+                # Category nodes have "category" key or contain "inherited" or "policies" keys
+                is_category = ("category" in current) or ("inherited" in current) or ("policies" in current)
+
+                if is_category:
+                    # Category node with inherited subcategories and policies
+                    children = []
+                    # Add inherited subcategories
+                    for inherited in current.get("inherited", []):
+                        children.append({
+                            "name": inherited.get("category", ""),
+                            "help": inherited.get("help", "")
+                        })
+                    # Add policies
+                    policies = current.get("policies", {})
+                    if isinstance(policies, dict):
+                        for key, policy in policies.items():
+                            children.append({
+                                "name": key,
+                                "help": policy.get("header", {}).get("explainText", "")
+                            })
+                    return children
+
                 # Check if this is uncategorizedPolicies dict
                 if parent_path.endswith("uncategorizedPolicies"):
                     return [
                         {"name": key, "help": policy.get("header", {}).get("explainText", "")}
                         for key, policy in current.items()
                     ]
-                # Other dicts like meta, Machine, User, categories
+
+                # Regular dict (meta, Machine, User, categories, etc.)
                 return [{"name": key, "help": ""} for key in current.keys()]
 
             return []
