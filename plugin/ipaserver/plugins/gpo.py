@@ -646,9 +646,19 @@ class gpo_list_children(Command):
                 logger.debug(f'raw_result type: {type(raw_result)}, value: {raw_result}')
                 # Convert to list of dicts for CLI output
                 if isinstance(raw_result, (tuple, list)):
-                    # Filter out empty items
-                    filtered_items = [item for item in raw_result if item]
-                    result = [{'name': str(item)} for item in filtered_items]
+                    result = []
+                    for item in raw_result:
+                        if not item:
+                            continue
+                        if isinstance(item, dict) and 'name' in item:
+                            # New format with name and help
+                            entry = {'name': str(item['name'])}
+                            if 'help' in item:
+                                entry['help'] = str(item['help'])
+                            result.append(entry)
+                        else:
+                            # Legacy string format
+                            result.append({'name': str(item)})
                 elif isinstance(raw_result, dict):
                     result = [{'name': k, 'value': str(v)} for k, v in raw_result.items()]
                 else:

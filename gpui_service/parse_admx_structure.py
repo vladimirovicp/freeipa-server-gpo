@@ -693,10 +693,12 @@ class AdmxParser:
                         parent = self.norm_ref(ch.attrib.get("ref"))
 
                 display_name = self.resolve_string(cat.attrib.get("displayName"))
+                explain_text = self.resolve_string(cat.attrib.get("explainText"))
 
                 categories[cat_id] = {
                     "id": cat_id,
                     "displayName": display_name,
+                    "explainText": explain_text,
                     "parent": parent,
                     "inherited_ids": [],
                 }
@@ -779,10 +781,17 @@ def merge_category(existing: dict, incoming: dict) -> dict:
         logger.debug(f"Category displayName conflict: '{existing.get('id')}' has displayName '{existing['displayName']}', "
               f"new definition wants '{incoming['displayName']}' (keeping existing)")
 
+    # Warn about conflicting explainText definitions
+    if existing.get("explainText") and incoming.get("explainText") and existing["explainText"] != incoming["explainText"]:
+        logger.debug(f"Category explainText conflict: '{existing.get('id')}' has explainText '{existing['explainText']}', "
+              f"new definition wants '{incoming['explainText']}' (keeping existing)")
+
     if not existing.get("parent") and incoming.get("parent"):
         existing["parent"] = incoming["parent"]
     if not existing.get("displayName") and incoming.get("displayName"):
         existing["displayName"] = incoming["displayName"]
+    if not existing.get("explainText") and incoming.get("explainText"):
+        existing["explainText"] = incoming["explainText"]
     return existing
 
 
@@ -885,6 +894,7 @@ def build_category_tree_for_class_expanded(
         cat = categories[cat_id]
         node = {
             "category": cat.get("displayName") or cat_id,
+            "help": cat.get("explainText") or "",
             "policies": policy_index_for_class.get(cat_id, {}),
             "inherited": [make_node(child_id) for child_id in cat.get("inherited_ids", [])],
         }
