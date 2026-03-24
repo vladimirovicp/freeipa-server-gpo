@@ -76,7 +76,14 @@ class GPODataStore:
                         # Category node: check for inherited subcategories or policies
                         if part == "policies":
                             policy_name = "/".join(parts[i+1:])
-                            return current.get("policies", {}).get(policy_name)
+                            policies = current.get("policies")
+                            if isinstance(policies, dict):
+                                return policies.get(policy_name)
+                            elif isinstance(policies, list):
+                                for policy in policies:
+                                    if policy.get("id") == policy_name or policy.get("displayName") == policy_name:
+                                        return policy
+                            return None
 
                         # Look for inherited subcategory
                         inherited_list = current.get("inherited", [])
@@ -104,7 +111,14 @@ class GPODataStore:
                     # POLICIES: terminal node (for uncategorizedPolicies etc.)
                     if part == "policies":
                         policy_name = "/".join(parts[i+1:])
-                        return current.get("policies", {}).get(policy_name)
+                        policies = current.get("policies")
+                        if isinstance(policies, dict):
+                            return policies.get(policy_name)
+                        elif isinstance(policies, list):
+                            for policy in policies:
+                                if policy.get("id") == policy_name or policy.get("displayName") == policy_name:
+                                    return policy
+                        return None
 
                     if part not in current:
                         return None
@@ -429,16 +443,19 @@ class GPODataStore:
     def list_children(self, parent_path):
         """List children under parent path with help text"""
         with self.lock:
-            # Handle root or empty path - return top-level keys
+            logger.debug(f"list_children: parent_path={parent_path}")
+            # Handle root or empty path - return top-level keys as strings
             if not parent_path or parent_path == "/":
-                return [{"name": key, "help": ""} for key in self.data.keys()]
+                return list(self.data.keys())
 
             parts = parent_path.strip("/").split("/")
+            logger.debug(f"  parts={parts}")
             current = self.data
 
             i = 0
             while i < len(parts):
                 part = parts[i]
+                logger.debug(f"  i={i}, part={part}, current type={type(current).__name__}, current keys={list(current.keys()) if isinstance(current, dict) else 'N/A'}")
 
                 # Case 1: next level is a dictionary
                 if isinstance(current, dict):
@@ -446,13 +463,33 @@ class GPODataStore:
                     if "category" in current:
                         # Category node: check for inherited subcategories or policies
                         if part == "policies":
-                            policies = current.get("policies", {})
+                            policies = current.get("policies")
                             if isinstance(policies, dict):
                                 return [
-                                    {"name": key, "help": policy.get("header", {}).get("explainText", "")}
-                                    for key, policy in policies.items()
+                                    {"name": policy_id, "help": policy.get("help", "")}
+                                    for policy_id, policy in policies.items()
+                                ]
+                            elif isinstance(policies, list):
+                                return [
+                                    {"name": policy.get("id") or policy.get("displayName") or str(idx),
+                                     "help": policy.get("help", "")}
+                                    for idx, policy in enumerate(policies)
                                 ]
                             return []
+
+                        if part == "inherited":
+                            inherited_list = current.get("inherited", [])
+                            if i == len(parts) - 1:
+                                # This is the last part - return list of inherited categories
+                                return [
+                                    {"name": item.get("category", ""), "help": item.get("help", "")}
+                                    for item in inherited_list
+                                    if isinstance(item, dict) and "category" in item
+                                ]
+                            # Not last part - navigate into the inherited list
+                            current = inherited_list
+                            i += 1
+                            continue
 
                         # Look for inherited subcategory
                         inherited_list = current.get("inherited", [])
@@ -479,13 +516,33 @@ class GPODataStore:
                     # Regular dictionary (not a category node)
                     # POLICIES: terminal node (for uncategorizedPolicies etc.)
                     if part == "policies":
-                        policies = current.get("policies", {})
+                        policies = current.get("policies")
                         if isinstance(policies, dict):
                             return [
-                                {"name": key, "help": policy.get("header", {}).get("explainText", "")}
-                                for key, policy in policies.items()
+                                {"name": policy_id, "help": policy.get("help", "")}
+                                for policy_id, policy in policies.items()
+                            ]
+                        elif isinstance(policies, list):
+                            return [
+                                {"name": policy.get("id") or policy.get("displayName") or str(idx),
+                                 "help": policy.get("help", "")}
+                                for idx, policy in enumerate(policies)
                             ]
                         return []
+
+                    if part == "inherited":
+                        inherited_list = current.get("inherited", [])
+                        if i == len(parts) - 1:
+                            # This is the last part - return list of inherited categories
+                            return [
+                                {"name": item.get("category", ""), "help": item.get("help", "")}
+                                for item in inherited_list
+                                if isinstance(item, dict) and "category" in item
+                            ]
+                        # Not last part - navigate into the inherited list
+                        current = inherited_list
+                        i += 1
+                        continue
 
                     if part not in current:
                         return []
@@ -528,33 +585,25 @@ class GPODataStore:
                 is_category = ("category" in current) or ("inherited" in current) or ("policies" in current)
 
                 if is_category:
-                    # Category node with inherited subcategories and policies
-                    children = []
-                    # Add inherited subcategories
-                    for inherited in current.get("inherited", []):
-                        children.append({
-                            "name": inherited.get("category", ""),
-                            "help": inherited.get("help", "")
-                        })
-                    # Add policies
-                    policies = current.get("policies", {})
-                    if isinstance(policies, dict):
-                        for key, policy in policies.items():
-                            children.append({
-                                "name": key,
-                                "help": policy.get("header", {}).get("explainText", "")
-                            })
-                    return children
+                    # Return keys of category object as strings (category, policies, inherited, help)
+                    return list(current.keys())
 
-                # Check if this is uncategorizedPolicies dict
+                # Check if this is uncategorizedPolicies dict/list
                 if parent_path.endswith("uncategorizedPolicies"):
-                    return [
-                        {"name": key, "help": policy.get("header", {}).get("explainText", "")}
-                        for key, policy in current.items()
-                    ]
+                    if isinstance(current, dict):
+                        return [
+                            {"name": policy_id, "help": policy.get("help", "")}
+                            for policy_id, policy in current.items()
+                        ]
+                    elif isinstance(current, list):
+                        return [
+                            {"name": policy.get("id") or policy.get("displayName") or str(i),
+                             "help": policy.get("help", "")}
+                            for i, policy in enumerate(current)
+                        ]
 
-                # Regular dict (meta, Machine, User, categories, etc.)
-                return [{"name": key, "help": ""} for key in current.keys()]
+                # Regular dict (meta, Machine, User, categories, etc.) - return keys as strings
+                return list(current.keys())
 
             return []
 

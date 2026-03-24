@@ -838,19 +838,27 @@ def link_category_inherited(categories: dict[str, dict]) -> None:
 def build_policy_index_expanded(policies: list[dict], categories: dict[str, dict]) -> dict:
     idx = {"Machine": {}, "User": {}}
 
+    # Track used IDs to ensure uniqueness
+    used_ids = {"Machine": set(), "User": set()}
+
     def add(cls: str, cat_id: str, item: dict):
-        # Generate unique key for policy: category + displayName (as requested)
+        # Generate unique ID for the policy
         header = item.get("header", {})
-        display_name = item.get("displayName") or header.get("displayName") or header.get("name") or "unknown"
-        # Use cat_id:display_name as key, ensure uniqueness
-        key = f"{cat_id}:{display_name}"
-        if key in idx[cls].get(cat_id, {}):
-            # If duplicate, append suffix
-            suffix = 2
-            while f"{key}_{suffix}" in idx[cls].get(cat_id, {}):
-                suffix += 1
-            key = f"{key}_{suffix}"
-        idx[cls].setdefault(cat_id, {})[key] = item
+        policy_name = header.get("name") or item.get("displayName") or "unknown"
+        base_id = f"{cat_id}:{policy_name}"
+
+        # Ensure uniqueness
+        policy_id = base_id
+        suffix = 1
+        while policy_id in used_ids[cls]:
+            suffix += 1
+            policy_id = f"{base_id}_{suffix}"
+
+        used_ids[cls].add(policy_id)
+        item["id"] = policy_id
+
+        # Add policy to dict for this category
+        idx[cls].setdefault(cat_id, {})[policy_id] = item
 
     for p in policies:
         cls_raw = (p.get("class") or "").strip()
@@ -861,7 +869,15 @@ def build_policy_index_expanded(policies: list[dict], categories: dict[str, dict
             cat = "__UNCATEGORIZED__"
 
         flat = p.get("policyJson") or {}
-        item = {"displayName": p.get("displayName") or None, **flat}
+        # Extract help text from policy header
+        header = flat.get("header", {})
+        explain_text = header.get("explainText", "")
+
+        item = {
+            "displayName": p.get("displayName") or None,
+            "help": explain_text,
+            **flat
+        }
 
         if cls_raw == "Machine":
             add("Machine", cat, item)
@@ -874,11 +890,9 @@ def build_policy_index_expanded(policies: list[dict], categories: dict[str, dict
             add("Machine", cat, item)
             add("User", cat, item)
 
-    # No sorting needed for dict, but we can sort keys if desired
-    # For consistency, sort policies within each category by displayName
+    # Sort policies within each category by displayName (convert dict to sorted list of tuples, then back to dict)
     for cls in ("Machine", "User"):
         for cat_id in idx[cls]:
-            # Convert dict to sorted list by displayName, then reassign as dict
             policies_dict = idx[cls][cat_id]
             sorted_items = sorted(policies_dict.items(), key=lambda kv: (kv[1].get("displayName") or ""))
             idx[cls][cat_id] = dict(sorted_items)
