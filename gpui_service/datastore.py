@@ -32,6 +32,9 @@ logger = logging.getLogger('gpuiservice')
 class GPODataStore:
     """Storage for ADMX policy data loaded from directory"""
 
+    # Categories with '/' in names that need special handling
+    SLASH_CATEGORIES = {"CD/DVD Applications"}
+
     def __init__(self, sysvol_path='/var/lib/freeipa/sysvol'):
         self.data = {}
         self.lock = threading.RLock()
@@ -53,6 +56,39 @@ class GPODataStore:
         except ImportError as exp:
             logger.warning(f"GPPrefsWorker not available: {exp}")
             logger.warning("Group Policy Preferences operations will be limited")
+
+    def _find_category_with_slash(self, categories, parts, start_index):
+        """
+        Find category considering slash categories exceptions.
+
+        Args:
+            categories: List of categories to search
+            parts: All path parts
+            start_index: Starting index in parts
+
+        Returns:
+            tuple: (found_category, parts_used_count) or (None, 0)
+        """
+        part = parts[start_index]
+
+        # 1. Direct search by current part
+        for cat in categories:
+            if isinstance(cat, dict) and cat.get("category") == part:
+                return cat, 1
+
+        # 2. Check slash categories
+        for slash_cat in self.SLASH_CATEGORIES:
+            if slash_cat.startswith(part + "/"):
+                slash_parts = slash_cat.split("/")
+                # Check if we have enough parts for full match
+                if start_index + len(slash_parts) <= len(parts):
+                    # Verify all parts match
+                    if all(parts[start_index + j] == slash_parts[j] for j in range(len(slash_parts))):
+                        # Find category by full name
+                        for cat in categories:
+                            if isinstance(cat, dict) and cat.get("category") == slash_cat:
+                                return cat, len(slash_parts)
+        return None, 0
 
     def load_from_directory(self, directory_path='/usr/share/PolicyDefinitions'):
         """Load ADMX policy definitions from directory"""
@@ -85,18 +121,14 @@ class GPODataStore:
                                         return policy
                             return None
 
-                        # Look for inherited subcategory
+                        # Look for inherited subcategory (including slash categories)
                         inherited_list = current.get("inherited", [])
-                        found_inherited = next(
-                            (
-                                item for item in inherited_list
-                                if isinstance(item, dict) and item.get("category") == part
-                            ),
-                            None
+                        found_inherited, parts_used = self._find_category_with_slash(
+                            inherited_list, parts, i
                         )
                         if found_inherited:
                             current = found_inherited
-                            i += 1
+                            i += parts_used
                             continue
 
                         # Not found in inherited, check other keys
@@ -128,16 +160,12 @@ class GPODataStore:
                     continue
 
                 if isinstance(current, list):
-                    found = next(
-                        (x for x in current
-                        if isinstance(x, dict) and x.get("category") == part),
-                        None
-                    )
+                    found, parts_used = self._find_category_with_slash(current, parts, i)
                     if not found:
                         return None
 
                     current = found
-                    i += 1
+                    i += parts_used
                     continue
 
                 return None
@@ -491,18 +519,14 @@ class GPODataStore:
                             i += 1
                             continue
 
-                        # Look for inherited subcategory
+                        # Look for inherited subcategory (including slash categories)
                         inherited_list = current.get("inherited", [])
-                        found_inherited = next(
-                            (
-                                item for item in inherited_list
-                                if isinstance(item, dict) and item.get("category") == part
-                            ),
-                            None
+                        found_inherited, parts_used = self._find_category_with_slash(
+                            inherited_list, parts, i
                         )
                         if found_inherited:
                             current = found_inherited
-                            i += 1
+                            i += parts_used
                             continue
 
                         # Not found in inherited, check other keys
@@ -553,19 +577,12 @@ class GPODataStore:
 
                 # Case 2: list of categories
                 if isinstance(current, list):
-                    found = next(
-                        (
-                            item for item in current
-                            if isinstance(item, dict)
-                            and item.get("category") == part
-                        ),
-                        None
-                    )
+                    found, parts_used = self._find_category_with_slash(current, parts, i)
                     if not found:
                         return []
 
                     current = found
-                    i += 1
+                    i += parts_used
                     continue
 
                 return []
