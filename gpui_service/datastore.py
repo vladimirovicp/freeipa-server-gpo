@@ -341,6 +341,15 @@ class GPODataStore:
             value_data = parsed_value
             # value_name and value_type already set from metadata or defaults
 
+        # If no metadata and value_name not set, extract from key_path
+        if not metadata_obj and not value_name:
+            key_parts = key_path.split('\\')
+            if len(key_parts) > 1:
+                potential_value_name = key_parts[-1]
+                if potential_value_name.strip():
+                    value_name = potential_value_name
+                    key_path = '\\'.join(key_parts[:-1])
+
         # Call GPTWorker
         resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
         logger.debug(f"Calling GPTWorker.update_policy_value: name_gpt={name_gpt}, resolved={resolved_name_gpt}, key_path={key_path}, value_name={value_name}, value_data={value_data}, value_type={value_type}, policy_type={policy_type}")
