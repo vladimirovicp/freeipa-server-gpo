@@ -254,8 +254,11 @@ class GPUIService(dbus.service.Object):
         try:
             result = self.data_store.save_preferences(json_data)
             return json.dumps(result, default=str)
+        except json.JSONDecodeError as e:
+            logger.error(f"Invalid JSON in save_preferences: {e}")
+            return json.dumps({'success': False, 'message': f'Invalid JSON: {e}'})
         except Exception as e:
-            logger.error(f"Failed to save preferences: {e}")
+            logger.exception(f"Unexpected error in save_preferences: {e}")
             return json.dumps({'success': False, 'message': str(e)})
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='v')
@@ -276,8 +279,11 @@ class GPUIService(dbus.service.Object):
         try:
             result = self.data_store.get_preferences(gpo_guid, scope, pref_type_param)
             return json.dumps(result, default=str)
+        except (OSError, IOError) as e:
+            logger.error(f"I/O error getting preferences: {e}")
+            return json.dumps({})
         except Exception as e:
-            logger.error(f"Failed to get preferences: {e}")
+            logger.exception(f"Unexpected error in get_preferences: {e}")
             return json.dumps({})
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='ssss', out_signature='b')
@@ -297,8 +303,11 @@ class GPUIService(dbus.service.Object):
         logger.info(f"delete_preference method called with gpo_guid: {gpo_guid}, scope: {scope}, pref_type: {pref_type}, uid: {uid}")
         try:
             return self.data_store.delete_preference(gpo_guid, scope, pref_type, uid)
+        except (OSError, IOError) as e:
+            logger.error(f"I/O error deleting preference: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to delete preference: {e}")
+            logger.exception(f"Unexpected error in delete_preference: {e}")
             return False
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='ss', out_signature='b')
@@ -338,6 +347,12 @@ class GPUIService(dbus.service.Object):
         except subprocess.TimeoutExpired:
             logger.error("Timeout updating paths")
             return False
+        except FileNotFoundError as e:
+            logger.error(f"Update paths command not found: {e}")
+            return False
+        except OSError as e:
+            logger.error(f"I/O error updating paths: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Error updating paths: {e}")
+            logger.exception(f"Unexpected error updating paths: {e}")
             return False

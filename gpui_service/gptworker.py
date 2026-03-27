@@ -23,7 +23,11 @@ Uses Samba GPPolParser for reading/writing Group Policy registry.pol files
 import logging
 from pathlib import Path
 import traceback
-import utils
+
+try:
+    from . import utils
+except ImportError:
+    import utils
 
 logger = logging.getLogger('gpuiservice')
 
@@ -224,9 +228,14 @@ class GPTWorker:
             logger.info(f"Created registry.pol file at {pol_file_path} with {total_entries} policies")
             return True
 
+        except PermissionError as exp:
+            logger.error(f"Permission denied writing to {pol_file_path}: {exp}")
+            return False
+        except OSError as exp:
+            logger.error(f"I/O error writing registry.pol to {pol_file_path}: {exp}")
+            return False
         except Exception as exp:
-            logger.error(f"Failed to create registry.pol file at {pol_file_path}: {exp}")
-            logger.error(traceback.format_exc())
+            logger.exception(f"Unexpected error creating registry.pol file at {pol_file_path}: {exp}")
             return False
 
     def read_pol_file(self, gpo_path, policy_type='Machine'):
@@ -278,9 +287,14 @@ class GPTWorker:
             logger.debug(f"Read {len(policies)} policies from {pol_file_path}")
             return policies
 
+        except PermissionError as exp:
+            logger.error(f"Permission denied reading {pol_file_path}: {exp}")
+            return {}
+        except OSError as exp:
+            logger.error(f"I/O error reading registry.pol from {pol_file_path}: {exp}")
+            return {}
         except Exception as exp:
-            logger.error(f"Failed to read registry.pol file at {pol_file_path}: {exp}")
-            logger.error(traceback.format_exc())
+            logger.exception(f"Unexpected error reading registry.pol file at {pol_file_path}: {exp}")
             return {}
 
     def update_policy_value(self, gpo_path, key_path, value_name, value_data,
@@ -324,9 +338,11 @@ class GPTWorker:
             # Create/update the file (pass nested dict directly)
             return self.create_pol_file(gpo_path, policy_type, existing_policies)
 
+        except (OSError, IOError) as exp:
+            logger.error(f"I/O error updating policy in {pol_file_path}: {exp}")
+            return False
         except Exception as exp:
-            logger.error(f"Failed to update policy value in {pol_file_path}: {exp}")
-            logger.error(traceback.format_exc())
+            logger.exception(f"Unexpected error updating policy value in {pol_file_path}: {exp}")
             return False
 
     def get_policy_value(self, gpo_path, key_path, value_name, policy_type='Machine'):
@@ -405,9 +421,14 @@ class GPTWorker:
                 logger.info(f"Deleted empty registry.pol file at {pol_file_path}")
                 return True
 
+        except PermissionError as exp:
+            logger.error(f"Permission denied deleting from {pol_file_path}: {exp}")
+            return False
+        except OSError as exp:
+            logger.error(f"I/O error deleting policy from {pol_file_path}: {exp}")
+            return False
         except Exception as exp:
-            logger.error(f"Failed to delete policy value from {pol_file_path}: {exp}")
-            logger.error(traceback.format_exc())
+            logger.exception(f"Unexpected error deleting policy value from {pol_file_path}: {exp}")
             return False
 
     def _convert_to_samba_type(self, reg_type):
