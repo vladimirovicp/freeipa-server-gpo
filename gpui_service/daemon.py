@@ -23,6 +23,8 @@ import sys
 import signal
 import threading
 import traceback
+from typing import Any, Optional
+
 from gi.repository import GLib, Gio
 import dbus
 import dbus.mainloop.glib
@@ -32,66 +34,41 @@ try:
     from .datastore import GPODataStore
     from .monitor import DirectoryMonitor
     from .service import GPUIService
+    from .config import get_monitor_path, get_sysvol_path
 except ImportError:
     from datastore import GPODataStore
     from monitor import DirectoryMonitor
     from service import GPUIService
+    from config import get_monitor_path, get_sysvol_path
 
 logger = logging.getLogger('gpuiservice')
+
 
 class ServiceDaemon:
     """Main daemon class managing DBus service and GLib main loop"""
 
-    def __init__(self, daemon_mode=True):
-        self.daemon_mode = daemon_mode
-        self.loop = None
-        self.bus = None
-        self.service = None
-        self.data_store = None
-        self.monitor = None
-        self.shutdown_event = threading.Event()
+    def __init__(self, daemon_mode: bool = True) -> None:
+        self.daemon_mode: bool = daemon_mode
+        self.loop: Optional[GLib.MainLoop] = None
+        self.bus: Optional[dbus.SystemBus] = None
+        self.service: Optional[GPUIService] = None
+        self.data_store: Optional[GPODataStore] = None
+        self.monitor: Optional[DirectoryMonitor] = None
+        self.shutdown_event: threading.Event = threading.Event()
 
-    def get_monitor_path(self):
-        """Get ADMX monitor path from GSettings or use default"""
-        default_path = '/usr/share/PolicyDefinitions'
-        try:
-            settings = Gio.Settings.new('org.altlinux.gpuiservice')
-            path = settings.get_string('monitor-path')
-            if path:
-                logger.info(f"Using monitor path from GSettings: {path}")
-                return path
-        except Exception as e:
-            logger.debug(f"Could not read monitor-path from GSettings: {e}")
-        logger.info(f"Using default monitor path: {default_path}")
-        return default_path
-
-    def get_sysvol_path(self):
-        """Get FreeIPA sysvol path from GSettings or use default"""
-        default_path = '/var/lib/freeipa/sysvol'
-        try:
-            settings = Gio.Settings.new('org.altlinux.gpuiservice')
-            path = settings.get_string('sysvol-path')
-            if path:
-                logger.info(f"Using sysvol path from GSettings: {path}")
-                return path
-        except Exception as e:
-            logger.debug(f"Could not read sysvol-path from GSettings: {e}")
-        logger.info(f"Using default sysvol path: {default_path}")
-        return default_path
-
-    def setup_signal_handlers(self):
+    def setup_signal_handlers(self) -> None:
         """Setup signal handlers for graceful shutdown"""
         signal.signal(signal.SIGTERM, self.signal_handler)
         signal.signal(signal.SIGINT, self.signal_handler)
 
-    def signal_handler(self, signum, frame):
+    def signal_handler(self, signum: int, frame: Any) -> None:
         """Handle termination signals"""
         logger.info(f"Received signal {signum}, initiating shutdown...")
         self.shutdown_event.set()
         if self.loop:
             self.loop.quit()
 
-    def setup_dbus(self):
+    def setup_dbus(self) -> bool:
         """Setup DBus connection and register service"""
         try:
             logger.debug("Setting DBus main loop...")
@@ -106,8 +83,8 @@ class ServiceDaemon:
             logger.debug(f"Bus name acquired: {bus_name}")
 
             # Create data store
-            sysvol_path = self.get_sysvol_path()
-            monitor_path = self.get_monitor_path()
+            sysvol_path = get_sysvol_path()
+            monitor_path = get_monitor_path()
             self.data_store = GPODataStore(sysvol_path)
             self.data_store.load_from_directory(monitor_path)
 
@@ -118,29 +95,32 @@ class ServiceDaemon:
             self.service = GPUIService(bus_name, '/org/altlinux/gpuiservice', self.data_store)
 
             logger.info("DBus service registered successfully")
-            logger.debug("DBus service registered successfully")
             return True
+        except dbus.exceptions.DBusException as e:
+            logger.error(f"DBus error during setup: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to setup DBus: {e}")
-            logger.error(f"DBus setup exception: {e}")
-            logger.exception("DBus setup failed")
+            logger.exception(f"Unexpected error setting up DBus: {e}")
             return False
 
-    def setup_monitor(self):
+    def setup_monitor(self) -> bool:
         """Setup directory monitoring"""
         try:
-            def on_reload():
+            def on_reload() -> None:
                 logger.info("Data reloaded from monitored directory")
 
             self.monitor = DirectoryMonitor(self.data_store, reload_callback=on_reload)
             self.monitor.start_monitoring()
             logger.info("Directory monitoring started")
             return True
+        except OSError as e:
+            logger.error(f"I/O error setting up directory monitor: {e}")
+            return False
         except Exception as e:
-            logger.error(f"Failed to setup directory monitor: {e}")
+            logger.exception(f"Unexpected error setting up directory monitor: {e}")
             return False
 
-    def run(self):
+    def run(self) -> int:
         """Main daemon run method"""
         logger.debug("ServiceDaemon.run() called")
         logger.info("Starting GPUIService daemon")
@@ -153,7 +133,6 @@ class ServiceDaemon:
         logger.debug("Setting up DBus...")
         if not self.setup_dbus():
             logger.error("Failed to setup DBus, exiting")
-            logger.error("DBus setup failed")
             return 1
         logger.debug("DBus setup successful")
 

@@ -20,60 +20,39 @@ DirectoryMonitor - Monitor directory for ADMX file changes and reload data
 """
 
 from pathlib import Path
+from typing import Any, Callable, Optional
+
 from gi.repository import Gio
 import logging
 
+try:
+    from .config import get_monitor_path
+except ImportError:
+    from config import get_monitor_path
+
 logger = logging.getLogger('gpuiservice')
+
 
 class DirectoryMonitor:
     """Monitor directory for ADMX file changes and reload data"""
 
-    def __init__(self, data_store, reload_callback=None):
+    def __init__(
+        self,
+        data_store: Any,
+        reload_callback: Optional[Callable[[], None]] = None
+    ) -> None:
         self.data_store = data_store
         self.reload_callback = reload_callback
-        self.monitor = None
-        self.monitored_path = None
-        self.settings = None
+        self.monitor: Optional[Gio.FileMonitor] = None
+        self.monitored_path: Optional[str] = None
 
-        # Try to load settings from dconf
-        try:
-            self.settings = Gio.Settings.new('org.altlinux.gpuiservice')
-        except Exception as e:
-            logger.debug(f"Could not load dconf settings: {e}")
-
-    def get_monitor_path(self):
-        """Get path to monitor from dconf or use default"""
-        default_path = '/usr/share/PolicyDefinitions'
-
-        if self.settings:
-            try:
-                path = self.settings.get_string('monitor-path')
-                if path:
-                    logger.info(f"Using monitor path from dconf: {path}")
-                    return path
-            except Exception as e:
-                logger.debug(f"Could not read monitor-path from dconf: {e}")
-
-        logger.info(f"Using default monitor path: {default_path}")
-        return default_path
-
-    def get_sysvol_path(self):
-        """Get FreeIPA sysvol path from dconf or use default"""
-        default_path = '/var/lib/freeipa/sysvol'
-
-        if self.settings:
-            try:
-                path = self.settings.get_string('sysvol-path')
-                if path:
-                    logger.info(f"Using sysvol path from dconf: {path}")
-                    return path
-            except Exception as e:
-                logger.debug(f"Could not read sysvol-path from dconf: {e}")
-
-        logger.info(f"Using default sysvol path: {default_path}")
-        return default_path
-
-    def on_file_changed(self, monitor, file, other_file, event_type):
+    def on_file_changed(
+        self,
+        monitor: Gio.FileMonitor,
+        file: Gio.File,
+        other_file: Optional[Gio.File],
+        event_type: Gio.FileMonitorEvent
+    ) -> None:
         """Callback when ADMX files change in monitored directory"""
         if event_type in (Gio.FileMonitorEvent.CHANGED,
                          Gio.FileMonitorEvent.CREATED,
@@ -84,7 +63,7 @@ class DirectoryMonitor:
             # Reload ADMX data from directory
             self.reload_data()
 
-    def reload_data(self):
+    def reload_data(self) -> None:
         """Reload ADMX data from monitored directory"""
         if self.monitored_path:
             logger.info(f"Reloading ADMX data from {self.monitored_path}")
@@ -95,17 +74,19 @@ class DirectoryMonitor:
                 try:
                     self.reload_callback()
                 except Exception as e:
-                    logger.error(f"Error in reload callback: {e}")
+                    logger.exception(f"Error in reload callback: {e}")
 
-    def start_monitoring(self):
+    def start_monitoring(self) -> None:
         """Start monitoring the directory"""
-        self.monitored_path = self.get_monitor_path()
+        self.monitored_path = get_monitor_path()
 
         # Create directory if it doesn't exist
         path_obj = Path(self.monitored_path)
         try:
             path_obj.mkdir(parents=True, exist_ok=True)
-        except Exception as e:
+        except PermissionError as e:
+            logger.error(f"Permission denied creating directory {self.monitored_path}: {e}")
+        except OSError as e:
             logger.error(f"Could not create directory {self.monitored_path}: {e}")
 
         # Initial load
@@ -118,9 +99,9 @@ class DirectoryMonitor:
             self.monitor.connect('changed', self.on_file_changed)
             logger.info(f"Started monitoring directory: {self.monitored_path}")
         except Exception as e:
-            logger.error(f"Failed to setup directory monitor: {e}")
+            logger.exception(f"Failed to setup directory monitor: {e}")
 
-    def stop_monitoring(self):
+    def stop_monitoring(self) -> None:
         """Stop monitoring"""
         if self.monitor:
             self.monitor.cancel()
