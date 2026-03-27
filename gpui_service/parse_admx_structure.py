@@ -20,6 +20,7 @@ import sys
 import json
 import re
 import logging
+import threading
 from pathlib import Path
 import xml.etree.ElementTree as ET
 
@@ -35,9 +36,9 @@ PRESENTATION_REF = re.compile(r"\$\(\s*presentation\.\s*([A-Za-z0-9_.-]+)\s*\)")
 class AdmxParser:
     """Parser for ADMX/ADML files."""
 
-    # Class-level caches for strings and presentations to avoid redundant loading
     _strings_cache: dict[tuple[Path, str], dict] = {}
     _presentations_cache: dict[tuple[Path, str], dict] = {}
+    _cache_lock = threading.Lock()
 
     def __init__(self, admx_filepath: str, locale: str = "en-US"):
         """
@@ -229,10 +230,11 @@ class AdmxParser:
             raise RuntimeError(f"Locale directory not found: {locale_dir}")
 
         cache_key = (self.base_dir, chosen_locale)
-        if cache_key in AdmxParser._strings_cache:
-            self.strings = AdmxParser._strings_cache[cache_key]
-            self.locale = chosen_locale
-            return
+        with AdmxParser._cache_lock:
+            if cache_key in AdmxParser._strings_cache:
+                self.strings = AdmxParser._strings_cache[cache_key]
+                self.locale = chosen_locale
+                return
 
         strings = {}
         for adml_file in locale_dir.rglob("*.adml"):
@@ -254,8 +256,9 @@ class AdmxParser:
                 strings[sid] = (el.text or "").strip()
 
         self.strings = strings
-        self.locale = chosen_locale  # update locale to the actual one used
-        AdmxParser._strings_cache[cache_key] = strings
+        self.locale = chosen_locale
+        with AdmxParser._cache_lock:
+            AdmxParser._strings_cache[cache_key] = strings
 
     def _extract_presentation_control_label(self, ctrl: ET.Element) -> str | None:
         txt = (ctrl.text or "").strip()
@@ -283,9 +286,10 @@ class AdmxParser:
             raise RuntimeError(f"Locale directory not found: {locale_dir}")
 
         cache_key = (self.base_dir, self.locale)
-        if cache_key in AdmxParser._presentations_cache:
-            self.presentations = AdmxParser._presentations_cache[cache_key]
-            return
+        with AdmxParser._cache_lock:
+            if cache_key in AdmxParser._presentations_cache:
+                self.presentations = AdmxParser._presentations_cache[cache_key]
+                return
 
         presentations = {}
         for adml_file in locale_dir.rglob("*.adml"):
@@ -333,7 +337,8 @@ class AdmxParser:
                                     slot[ref_id].setdefault(k, v)
 
         self.presentations = presentations
-        AdmxParser._presentations_cache[cache_key] = presentations
+        with AdmxParser._cache_lock:
+            AdmxParser._presentations_cache[cache_key] = presentations
 
     def localize_supported_on(self, supported_on_ref: str | None) -> str | None:
         if not supported_on_ref:
