@@ -24,8 +24,14 @@ from pathlib import Path
 import logging
 import json
 import ast
-from parse_admx_structure import AdmxParser
-import utils
+from typing import Any, Optional, Union
+
+try:
+    from .parse_admx_structure import AdmxParser
+    from . import utils
+except ImportError:
+    from parse_admx_structure import AdmxParser
+    import utils
 
 logger = logging.getLogger('gpuiservice')
 
@@ -90,87 +96,120 @@ class GPODataStore:
                                 return cat, len(slash_parts)
         return None, 0
 
+    def _navigate_path(self, path: str) -> tuple[Any, list[str], bool]:
+        """
+        Navigate to path in data structure.
+
+        Common navigation logic for get() and list_children().
+
+        Args:
+            path: Path to navigate (e.g., "Machine/categories/System")
+
+        Returns:
+            Tuple of (current_node, remaining_parts, found):
+            - current_node: The node found at path (or None if not found)
+            - remaining_parts: Parts of path not yet navigated
+            - found: True if navigation succeeded to some point
+        """
+        if not path or path == "/":
+            return self.data, [], True
+
+        parts = path.strip("/").split("/")
+        current = self.data
+        i = 0
+
+        while i < len(parts):
+            part = parts[i]
+
+            if isinstance(current, dict):
+                if "category" in current:
+                    result = self._navigate_category_node(current, parts, i)
+                    if result is None:
+                        return None, [], False
+                    current, i = result
+                    continue
+
+                if part not in current:
+                    return None, [], False
+                current = current[part]
+                i += 1
+                continue
+
+            if isinstance(current, list):
+                found, parts_used = self._find_category_with_slash(current, parts, i)
+                if not found:
+                    return None, [], False
+                current = found
+                i += parts_used
+                continue
+
+            return None, [], False
+
+        return current, parts[i:], True
+
+    def _navigate_category_node(self, current: dict, parts: list[str], i: int) -> Optional[tuple[Any, int]]:
+        """
+        Navigate within a category node.
+
+        Args:
+            current: Current category node (dict with "category" key)
+            parts: All path parts
+            i: Current index in parts
+
+        Returns:
+            Tuple (new_current, new_index) or None if navigation failed
+        """
+        part = parts[i]
+
+        if part == "policies":
+            return current.get("policies"), i + 1
+
+        if part == "inherited":
+            inherited_list = current.get("inherited", [])
+            return inherited_list, i + 1
+
+        inherited_list = current.get("inherited", [])
+        found_inherited, parts_used = self._find_category_with_slash(inherited_list, parts, i)
+        if found_inherited:
+            return found_inherited, i + parts_used
+
+        if part in current:
+            return current[part], i + 1
+
+        return None
+
     def load_from_directory(self, directory_path='/usr/share/PolicyDefinitions'):
         """Load ADMX policy definitions from directory"""
         self.data = AdmxParser.build_result_for_dir(directory_path)
 
-    def get(self, path):
+    def get(self, path: str) -> Union[dict, list, str, int, None]:
+        """
+        Get value by path.
+
+        Args:
+            path: Path to retrieve (e.g., "Machine/categories/System")
+
+        Returns:
+            Value at path, or None if not found.
+        """
         with self.lock:
-            if not path or path == "/":
-                return self.data
-
-            parts = path.strip("/").split("/")
-            current = self.data
-
-            i = 0
-            while i < len(parts):
-                part = parts[i]
-
-                if isinstance(current, dict):
-                    # Check if this is a category node
-                    if "category" in current:
-                        # Category node: check for inherited subcategories or policies
-                        if part == "policies":
-                            policy_name = "/".join(parts[i+1:])
-                            policies = current.get("policies")
-                            if isinstance(policies, dict):
-                                return policies.get(policy_name)
-                            elif isinstance(policies, list):
-                                for policy in policies:
-                                    if policy.get("id") == policy_name or policy.get("displayName") == policy_name:
-                                        return policy
-                            return None
-
-                        # Look for inherited subcategory (including slash categories)
-                        inherited_list = current.get("inherited", [])
-                        found_inherited, parts_used = self._find_category_with_slash(
-                            inherited_list, parts, i
-                        )
-                        if found_inherited:
-                            current = found_inherited
-                            i += parts_used
-                            continue
-
-                        # Not found in inherited, check other keys
-                        if part not in current:
-                            return None
-
-                        current = current[part]
-                        i += 1
-                        continue
-
-                    # Regular dictionary (not a category node)
-                    # POLICIES: terminal node (for uncategorizedPolicies etc.)
-                    if part == "policies":
-                        policy_name = "/".join(parts[i+1:])
-                        policies = current.get("policies")
-                        if isinstance(policies, dict):
-                            return policies.get(policy_name)
-                        elif isinstance(policies, list):
-                            for policy in policies:
-                                if policy.get("id") == policy_name or policy.get("displayName") == policy_name:
-                                    return policy
-                        return None
-
-                    if part not in current:
-                        return None
-
-                    current = current[part]
-                    i += 1
-                    continue
-
-                if isinstance(current, list):
-                    found, parts_used = self._find_category_with_slash(current, parts, i)
-                    if not found:
-                        return None
-
-                    current = found
-                    i += parts_used
-                    continue
-
+            current, remaining, found = self._navigate_path(path)
+            if not found:
                 return None
 
-            return current
+            if not remaining:
+                return current
+
+            if len(remaining) == 1:
+                part = remaining[0]
+                if isinstance(current, dict):
+                    return current.get(part)
+                if isinstance(current, list):
+                    for item in current:
+                        if isinstance(item, dict):
+                            if item.get("id") == part or item.get("displayName") == part:
+                                return item
+            return None
 
 
     def set(self, path, value, name_gpt, target=None, metadata=None):
@@ -358,8 +397,11 @@ class GPODataStore:
                 resolved_name_gpt, key_path, value_name, value_data, value_type, policy_type
             )
             return success
+        except (OSError, IOError) as exp:
+            logger.error(f"I/O error writing policy to {resolved_name_gpt}: {exp}")
+            return False
         except Exception as exp:
-            logger.error(f"Failed to set policy value: {exp}")
+            logger.exception(f"Unexpected error setting policy value: {exp}")
             return False
 
     def _extract_key_and_value_from_metadata(self, key_path, metadata_obj, heavy_meta=None):
@@ -473,165 +515,74 @@ class GPODataStore:
                 resolved_name_gpt, key_path, value_name, policy_type
             )
             return result
+        except (OSError, IOError) as exp:
+            logger.error(f"I/O error reading policy from {resolved_name_gpt}: {exp}")
+            return None
         except Exception as exp:
-            logger.error(f"Failed to get policy value: {exp}")
+            logger.exception(f"Unexpected error getting policy value: {exp}")
             return None
 
-    def list_children(self, parent_path):
-        """List children under parent path with help text"""
+    def list_children(self, parent_path: str) -> list[Union[str, dict]]:
+        """
+        List children under parent path with help text.
+
+        Args:
+            parent_path: Path to list children for
+
+        Returns:
+            List of child names (strings) or dicts with 'name' and 'help' keys.
+        """
         with self.lock:
             logger.debug(f"list_children: parent_path={parent_path}")
-            # Handle root or empty path - return top-level keys as strings
+
             if not parent_path or parent_path == "/":
                 return list(self.data.keys())
 
-            parts = parent_path.strip("/").split("/")
-            logger.debug(f"  parts={parts}")
-            current = self.data
-
-            i = 0
-            while i < len(parts):
-                part = parts[i]
-                logger.debug(f"  i={i}, part={part}, current type={type(current).__name__}, current keys={list(current.keys()) if isinstance(current, dict) else 'N/A'}")
-
-                # Case 1: next level is a dictionary
-                if isinstance(current, dict):
-                    # Check if this is a category node
-                    if "category" in current:
-                        # Category node: check for inherited subcategories or policies
-                        if part == "policies":
-                            policies = current.get("policies")
-                            if isinstance(policies, dict):
-                                return [
-                                    {"name": policy_id, "help": policy.get("help", "")}
-                                    for policy_id, policy in policies.items()
-                                ]
-                            elif isinstance(policies, list):
-                                return [
-                                    {"name": policy.get("id") or policy.get("displayName") or str(idx),
-                                     "help": policy.get("help", "")}
-                                    for idx, policy in enumerate(policies)
-                                ]
-                            return []
-
-                        if part == "inherited":
-                            inherited_list = current.get("inherited", [])
-                            if i == len(parts) - 1:
-                                # This is the last part - return list of inherited categories
-                                return [
-                                    {"name": item.get("category", ""), "help": item.get("help", "")}
-                                    for item in inherited_list
-                                    if isinstance(item, dict) and "category" in item
-                                ]
-                            # Not last part - navigate into the inherited list
-                            current = inherited_list
-                            i += 1
-                            continue
-
-                        # Look for inherited subcategory (including slash categories)
-                        inherited_list = current.get("inherited", [])
-                        found_inherited, parts_used = self._find_category_with_slash(
-                            inherited_list, parts, i
-                        )
-                        if found_inherited:
-                            current = found_inherited
-                            i += parts_used
-                            continue
-
-                        # Not found in inherited, check other keys
-                        if part not in current:
-                            return []
-
-                        current = current[part]
-                        i += 1
-                        continue
-
-                    # Regular dictionary (not a category node)
-                    # POLICIES: terminal node (for uncategorizedPolicies etc.)
-                    if part == "policies":
-                        policies = current.get("policies")
-                        if isinstance(policies, dict):
-                            return [
-                                {"name": policy_id, "help": policy.get("help", "")}
-                                for policy_id, policy in policies.items()
-                            ]
-                        elif isinstance(policies, list):
-                            return [
-                                {"name": policy.get("id") or policy.get("displayName") or str(idx),
-                                 "help": policy.get("help", "")}
-                                for idx, policy in enumerate(policies)
-                            ]
-                        return []
-
-                    if part == "inherited":
-                        inherited_list = current.get("inherited", [])
-                        if i == len(parts) - 1:
-                            # This is the last part - return list of inherited categories
-                            return [
-                                {"name": item.get("category", ""), "help": item.get("help", "")}
-                                for item in inherited_list
-                                if isinstance(item, dict) and "category" in item
-                            ]
-                        # Not last part - navigate into the inherited list
-                        current = inherited_list
-                        i += 1
-                        continue
-
-                    if part not in current:
-                        return []
-
-                    current = current[part]
-                    i += 1
-                    continue
-
-                # Case 2: list of categories
-                if isinstance(current, list):
-                    found, parts_used = self._find_category_with_slash(current, parts, i)
-                    if not found:
-                        return []
-
-                    current = found
-                    i += parts_used
-                    continue
-
+            current, remaining, found = self._navigate_path(parent_path)
+            if not found or remaining:
                 return []
 
-            # We've reached the target level
-            if isinstance(current, list):
-                # List of categories (e.g., /Machine/categories)
-                return [
-                    {"name": item.get("category", ""), "help": item.get("help", "")}
-                    for item in current
-                    if isinstance(item, dict) and "category" in item
-                ]
+            return self._format_children(current, parent_path)
 
-            if isinstance(current, dict):
-                # Check if this is a category node
-                # Category nodes have "category" key or contain "inherited" or "policies" keys
-                is_category = ("category" in current) or ("inherited" in current) or ("policies" in current)
+    def _format_children(self, current: Any, parent_path: str) -> list[Union[str, dict]]:
+        """
+        Format children of current node for list_children output.
 
-                if is_category:
-                    # Return keys of category object as strings (category, policies, inherited, help)
-                    return list(current.keys())
+        Args:
+            current: Current node to format children for
+            parent_path: Original parent path (for context)
 
-                # Check if this is uncategorizedPolicies dict/list
-                if parent_path.endswith("uncategorizedPolicies"):
-                    if isinstance(current, dict):
-                        return [
-                            {"name": policy_id, "help": policy.get("help", "")}
-                            for policy_id, policy in current.items()
-                        ]
-                    elif isinstance(current, list):
-                        return [
-                            {"name": policy.get("id") or policy.get("displayName") or str(i),
-                             "help": policy.get("help", "")}
-                            for i, policy in enumerate(current)
-                        ]
+        Returns:
+            List of formatted children.
+        """
+        if isinstance(current, list):
+            return [
+                {"name": item.get("category", ""), "help": item.get("help", "")}
+                for item in current
+                if isinstance(item, dict) and "category" in item
+            ]
 
-                # Regular dict (meta, Machine, User, categories, etc.) - return keys as strings
+        if isinstance(current, dict):
+            is_category = ("category" in current) or ("inherited" in current) or ("policies" in current)
+
+            if is_category:
                 return list(current.keys())
 
-            return []
+            if parent_path.endswith("uncategorizedPolicies"):
+                return [
+                    {"name": policy_id, "help": policy.get("help", "")}
+                    for policy_id, policy in current.items()
+                ]
+
+            if parent_path.endswith("policies"):
+                return [
+                    {"name": policy_id, "help": policy.get("help", "")}
+                    for policy_id, policy in current.items()
+                ]
+
+            return list(current.keys())
+
+        return []
 
     def save_preferences(self, json_data):
         """
@@ -664,8 +615,14 @@ class GPODataStore:
             if result.get('success'):
                 self._update_gpo_version(data)
             return result
+        except json.JSONDecodeError as exp:
+            logger.error(f"Invalid JSON in preferences data: {exp}")
+            return {'success': False, 'message': f'Invalid JSON: {exp}'}
+        except (OSError, IOError) as exp:
+            logger.error(f"I/O error saving preferences: {exp}")
+            return {'success': False, 'message': str(exp)}
         except Exception as exp:
-            logger.error(f"Failed to save preferences: {exp}")
+            logger.exception(f"Unexpected error saving preferences: {exp}")
             return {'success': False, 'message': str(exp)}
 
     def get_preferences(self, gpo_guid, scope, pref_type=None):
@@ -687,8 +644,11 @@ class GPODataStore:
         try:
             resolved_gpo_guid = utils.resolve_gpo_path(gpo_guid, self.sysvol_path)
             return self.gpprefs_worker.read_preferences(resolved_gpo_guid, scope, pref_type)
+        except (OSError, IOError) as exp:
+            logger.error(f"I/O error reading preferences from {gpo_guid}: {exp}")
+            return {}
         except Exception as exp:
-            logger.error(f"Failed to get preferences: {exp}")
+            logger.exception(f"Unexpected error getting preferences: {exp}")
             return {}
 
     def delete_preference(self, gpo_guid, scope, pref_type, uid):
@@ -715,8 +675,11 @@ class GPODataStore:
                 # TODO: Update GPO version in LDAP and GPT.INI
                 pass
             return success
+        except (OSError, IOError) as exp:
+            logger.error(f"I/O error deleting preference from {gpo_guid}: {exp}")
+            return False
         except Exception as exp:
-            logger.error(f"Failed to delete preference: {exp}")
+            logger.exception(f"Unexpected error deleting preference: {exp}")
             return False
 
 
