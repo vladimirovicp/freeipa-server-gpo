@@ -20,14 +20,35 @@ gpuiservice - API service for webGPUI to manage GPT directory contents
 """
 
 try:
+    from .config import get_monitor_path, get_sysvol_path, get_gsettings
     from .datastore import GPODataStore
     from .monitor import DirectoryMonitor
     from .service import GPUIService
     from .daemon import ServiceDaemon
+    from .gptworker import GPTWorker
+    from .gpprefs import GPPrefsWorker
+    from .utils import resolve_gpo_path, normalize_path_separators, is_unc_path
 except ImportError:
+    from config import get_monitor_path, get_sysvol_path, get_gsettings
     from datastore import GPODataStore
     from monitor import DirectoryMonitor
     from service import GPUIService
     from daemon import ServiceDaemon
+    from gptworker import GPTWorker
+    from gpprefs import GPPrefsWorker
+    from utils import resolve_gpo_path, normalize_path_separators, is_unc_path
 
-__all__ = ['GPODataStore', 'DirectoryMonitor', 'GPUIService', 'ServiceDaemon']
+__all__ = [
+    'get_monitor_path',
+    'get_sysvol_path',
+    'get_gsettings',
+    'GPODataStore',
+    'DirectoryMonitor',
+    'GPUIService',
+    'ServiceDaemon',
+    'GPTWorker',
+    'GPPrefsWorker',
+    'resolve_gpo_path',
+    'normalize_path_separators',
+    'is_unc_path',
+]

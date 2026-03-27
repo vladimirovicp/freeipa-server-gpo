@@ -20,9 +20,16 @@ Utility functions for path resolution and normalization.
 """
 
 
-def resolve_gpo_path(path, sysvol_path):
+def resolve_gpo_path(path: str | None, sysvol_path: str) -> str:
     """
     Resolve UNC or absolute GPO path to relative path within sysvol.
+
+    Args:
+        path: GPO path (UNC, absolute, or relative)
+        sysvol_path: Base sysvol path for resolution
+
+    Returns:
+        Resolved relative path within sysvol.
     """
     if isinstance(path, str):
         if path.startswith('\\\\'):
@@ -41,11 +48,27 @@ def resolve_gpo_path(path, sysvol_path):
     return str(path)
 
 
-def normalize_path_separators(path):
-    """Normalize path separators to forward slashes."""
+def normalize_path_separators(path: str) -> str:
+    """
+    Normalize path separators to forward slashes.
+
+    Args:
+        path: Path with potential backslashes
+
+    Returns:
+        Path with forward slashes only.
+    """
     return path.replace('\\', '/')
 
 
-def is_unc_path(path):
-    """Check if path is a UNC path."""
+def is_unc_path(path: str | None) -> bool:
+    """
+    Check if path is a UNC path.
+
+    Args:
+        path: Path to check
+
+    Returns:
+        True if path is a UNC path (starts with \\\\), False otherwise.
+    """
     return isinstance(path, str) and path.startswith('\\\\')
