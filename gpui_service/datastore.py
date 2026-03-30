@@ -43,7 +43,7 @@ SUPPORTED_LOCALES = {'ru-RU', 'en-US'}
 class GPODataStore:
     """Storage for ADMX policy data loaded from directory"""
 
-    SLASH_CATEGORIES = {"CD/DVD Applications", "Приложения CD/DVD"}
+    SLASH_CATEGORIES = {"CD/DVD Applications", "Приложения для CD/DVD"}
 
     def __init__(self, sysvol_path='/var/lib/freeipa/sysvol'):
         self.data = {}
@@ -190,7 +190,9 @@ class GPODataStore:
                     continue
 
                 if part not in current:
-                    return None, [], False
+                    # Check if this might be a policy lookup by displayName
+                    # Return current node and remaining parts for get() to handle
+                    return current, parts[i:], True
                 current = current[part]
                 i += 1
                 continue
@@ -306,7 +308,14 @@ class GPODataStore:
             if len(remaining) == 1:
                 part = remaining[0]
                 if isinstance(current, dict):
-                    return current.get(part)
+                    # Direct key lookup
+                    if part in current:
+                        return current[part]
+                    # Search by displayName in values (for policies)
+                    for key, value in current.items():
+                        if isinstance(value, dict) and value.get("displayName") == part:
+                            return value
+                    return None
                 if isinstance(current, list):
                     for item in current:
                         if isinstance(item, dict):
@@ -673,14 +682,16 @@ class GPODataStore:
 
             if parent_path.endswith("uncategorizedPolicies"):
                 return [
-                    {"name": policy_id, "help": policy.get("help", "")}
+                    {"name": policy.get("displayName", policy_id), "help": policy.get("help", "")}
                     for policy_id, policy in current.items()
+                    if isinstance(policy, dict)
                 ]
 
             if parent_path.endswith("policies"):
                 return [
-                    {"name": policy_id, "help": policy.get("help", "")}
+                    {"name": policy.get("displayName", policy_id), "help": policy.get("help", "")}
                     for policy_id, policy in current.items()
+                    if isinstance(policy, dict)
                 ]
 
             return list(current.keys())
