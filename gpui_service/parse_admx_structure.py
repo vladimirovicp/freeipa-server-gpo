@@ -462,9 +462,10 @@ class AdmxParser:
         }
         return self._apply_presentation_defaults(md, pres_info)
 
-    def _parse_boolean_metadata(self, el: ET.Element, pres_info: dict | None) -> dict:
+    def _parse_boolean_metadata(self, el: ET.Element, pres_info: dict | None, base_key: str = "") -> dict:
         bool_id = el.attrib.get("id")
-        key = el.attrib.get("key")
+        el_key = el.attrib.get("key")
+        key = el_key if el_key else base_key
         value_name = el.attrib.get("valueName")
 
         true_v = None
@@ -495,7 +496,7 @@ class AdmxParser:
         md = {
             "type": "boolean",
             "id": bool_id,
-            "key": key,
+            "key": self.normalize_registry_key(key) if key else None,
             "valueName": value_name,
             "trueValue": _to_num_or_str(true_v),
             "falseValue": _to_num_or_str(false_v),
@@ -508,11 +509,17 @@ class AdmxParser:
         md = {"type": "text", "id": text_id, "valueName": value_name, "required": False}
         return self._apply_presentation_defaults(md, pres_info)
 
-    def _parse_list_metadata(self, el: ET.Element, pres_info: dict | None) -> dict:
+    def _parse_list_metadata(self, el: ET.Element, pres_info: dict | None, base_key: str = "") -> dict:
         list_id = el.attrib.get("id")
-        key = el.attrib.get("key")
+        el_key = el.attrib.get("key")
+        key = el_key if el_key else base_key
         additive = (el.attrib.get("additive") or "").strip().lower() == "true"
-        md = {"type": "list", "id": list_id, "key": key, "additive": additive}
+        md = {
+            "type": "list",
+            "id": list_id,
+            "key": self.normalize_registry_key(key) if key else None,
+            "additive": additive
+        }
         return self._apply_presentation_defaults(md, pres_info)
 
     def _parse_decimal_metadata(self, el: ET.Element, pres_info: dict | None) -> dict:
@@ -644,8 +651,9 @@ class AdmxParser:
                 policy_obj[heavykey] = self.wrap_metadata_with_data(meta, heavykey)
 
             elif local == "boolean":
-                meta = self._parse_boolean_metadata(el, pres_info)
-                k = self.normalize_registry_key(el.attrib.get("key") or "")
+                meta = self._parse_boolean_metadata(el, pres_info, base_key)
+                el_key = el.attrib.get("key")
+                k = self.normalize_registry_key(el_key) if el_key else base_key
                 vn = (el.attrib.get("valueName") or "").strip()
                 heavykey = self.normalize_registry_key(f"{k}\\{vn}")
                 policy_obj[heavykey] = self.wrap_metadata_with_data(meta, heavykey)
@@ -657,8 +665,9 @@ class AdmxParser:
                 policy_obj[heavykey] = self.wrap_metadata_with_data(meta, heavykey)
 
             elif local == "list":
-                meta = self._parse_list_metadata(el, pres_info)
-                k = self.normalize_registry_key(el.attrib.get("key") or "")
+                meta = self._parse_list_metadata(el, pres_info, base_key)
+                el_key = el.attrib.get("key")
+                k = self.normalize_registry_key(el_key) if el_key else base_key
                 policy_obj[k] = self.wrap_metadata_with_data(meta, k)
 
             elif local == "decimal":
