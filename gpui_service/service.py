@@ -189,7 +189,7 @@ class GPUIService(dbus.service.Object):
         logger.info(f"list_children method called with parent_path: {parent_path}")
         result = self.data_store.list_children(parent_path)
         if isinstance(result, (dict, list, tuple, set)):
-            return json.dumps(result, default=str)
+            return json.dumps(result, default=str, ensure_ascii=False)
         elif isinstance(result, (int, float, bool)):
             return result
         else:
@@ -236,7 +236,7 @@ class GPUIService(dbus.service.Object):
             "value_data": value_data,
             "value_type": value_type
         }
-        return json.dumps(response, default=str)
+        return json.dumps(response, default=str, ensure_ascii=False)
 
     @dbus.service.method('org.altlinux.GPUIService', out_signature='b')
     def reload(self):
@@ -277,7 +277,7 @@ class GPUIService(dbus.service.Object):
         logger.info(f"save_preferences method called with json_data: {json_data[:200]}...")
         try:
             result = self.data_store.save_preferences(json_data)
-            return json.dumps(result, default=str)
+            return json.dumps(result, default=str, ensure_ascii=False)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in save_preferences: {e}")
             return json.dumps({'success': False, 'message': f'Invalid JSON: {e}'}, ensure_ascii=False)
@@ -302,7 +302,7 @@ class GPUIService(dbus.service.Object):
         pref_type_param = pref_type if pref_type else None
         try:
             result = self.data_store.get_preferences(gpo_guid, scope, pref_type_param)
-            return json.dumps(result, default=str)
+            return json.dumps(result, default=str, ensure_ascii=False)
         except (OSError, IOError) as e:
             logger.error(f"I/O error getting preferences: {e}")
             return json.dumps({}, ensure_ascii=False)
