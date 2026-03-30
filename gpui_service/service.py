@@ -153,7 +153,7 @@ class GPUIService(dbus.service.Object):
             return ""
 
         if isinstance(value, (dict, list, tuple, set)):
-            return json.dumps(value, default=str)
+            return json.dumps(value, default=str, ensure_ascii=False)
         elif isinstance(value, (int, float, bool)):
             return value
         else:
@@ -209,7 +209,7 @@ class GPUIService(dbus.service.Object):
         logger.info(f"find method called with pattern: {search_pattern}, type: {search_type}")
         # TODO: Implement actual search functionality
         result = []
-        return json.dumps(result)
+        return json.dumps(result, ensure_ascii=False)
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='v')
     def get_current_value(self, name_gpt, target, path):
@@ -280,10 +280,10 @@ class GPUIService(dbus.service.Object):
             return json.dumps(result, default=str)
         except json.JSONDecodeError as e:
             logger.error(f"Invalid JSON in save_preferences: {e}")
-            return json.dumps({'success': False, 'message': f'Invalid JSON: {e}'})
+            return json.dumps({'success': False, 'message': f'Invalid JSON: {e}'}, ensure_ascii=False)
         except Exception as e:
             logger.exception(f"Unexpected error in save_preferences: {e}")
-            return json.dumps({'success': False, 'message': str(e)})
+            return json.dumps({'success': False, 'message': str(e)}, ensure_ascii=False)
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='v')
     def get_preferences(self, gpo_guid, scope, pref_type):
@@ -305,10 +305,10 @@ class GPUIService(dbus.service.Object):
             return json.dumps(result, default=str)
         except (OSError, IOError) as e:
             logger.error(f"I/O error getting preferences: {e}")
-            return json.dumps({})
+            return json.dumps({}, ensure_ascii=False)
         except Exception as e:
             logger.exception(f"Unexpected error in get_preferences: {e}")
-            return json.dumps({})
+            return json.dumps({}, ensure_ascii=False)
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='ssss', out_signature='b')
     def delete_preference(self, gpo_guid, scope, pref_type, uid):
