@@ -43,7 +43,7 @@ SUPPORTED_LOCALES = {'ru-RU', 'en-US'}
 class GPODataStore:
     """Storage for ADMX policy data loaded from directory"""
 
-    SLASH_CATEGORIES = {"CD/DVD Applications"}
+    SLASH_CATEGORIES = {"CD/DVD Applications", "Приложения CD/DVD"}
 
     def __init__(self, sysvol_path='/var/lib/freeipa/sysvol'):
         self.data = {}
