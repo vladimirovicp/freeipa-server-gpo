@@ -40,6 +40,14 @@ class AdmxParser:
     _presentations_cache: dict[tuple[Path, str], dict] = {}
     _cache_lock = threading.Lock()
 
+    @classmethod
+    def clear_cache(cls) -> None:
+        """Clear all cached strings and presentations."""
+        with cls._cache_lock:
+            cls._strings_cache.clear()
+            cls._presentations_cache.clear()
+            logger.debug("ADMX parser cache cleared")
+
     def __init__(self, admx_filepath: str, locale: str = "en-US"):
         """
         Initialize parser for a single ADMX file.

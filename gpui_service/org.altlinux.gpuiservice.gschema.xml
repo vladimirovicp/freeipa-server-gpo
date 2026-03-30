@@ -17,5 +17,14 @@
         Path to the FreeIPA sysvol directory where GPT structures are stored.
       </description>
     </key>
+
+    <key name="locale" type="s">
+      <default>''</default>
+      <summary>Locale for ADMX policy parsing</summary>
+      <description>
+        Locale to use when parsing ADMX/ADML files (e.g., 'ru-RU', 'en-US').
+        Empty string means use system locale.
+      </description>
+    </key>
   </schema>
 </schemalist>

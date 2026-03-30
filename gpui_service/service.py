@@ -104,6 +104,16 @@ class GPUIService(dbus.service.Object):
                     <arg name="sysvol_path" direction="in" type="s"/>
                     <arg name="success" direction="out" type="b"/>
                     </method>
+                    <method name="set_locale">
+                    <arg name="locale" direction="in" type="s"/>
+                    <arg name="success" direction="out" type="b"/>
+                    </method>
+                    <method name="get_locale">
+                    <arg name="locale" direction="out" type="s"/>
+                    </method>
+                    <signal name="locale_changed">
+                    <arg name="locale" type="s"/>
+                    </signal>
                 </interface>
                 <interface name="org.freedesktop.DBus.Introspectable">
                     <method name="Introspect">
@@ -231,13 +241,27 @@ class GPUIService(dbus.service.Object):
     @dbus.service.method('org.altlinux.GPUIService', out_signature='b')
     def reload(self):
         """
-        Manually trigger reload of ADMX data for GPO generation
+        Manually trigger reload of ADMX data for GPO generation.
+
         Returns:
-            True if successful
+            True if successful, False otherwise
         """
         logger.info("Manual reload requested")
-        # The reload will be handled by the monitor
-        return True
+        if self.data_store.monitor_path:
+            try:
+                from parse_admx_structure import AdmxParser
+                AdmxParser.clear_cache()
+                self.data_store.load_from_directory(
+                    self.data_store.monitor_path,
+                    self.data_store.locale
+                )
+                logger.info("ADMX data reloaded successfully")
+                return True
+            except Exception as e:
+                logger.exception(f"Error reloading ADMX data: {e}")
+                return False
+        logger.warning("No monitor path set, cannot reload")
+        return False
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='s', out_signature='v')
     def save_preferences(self, json_data):
@@ -356,3 +380,40 @@ class GPUIService(dbus.service.Object):
         except Exception as e:
             logger.exception(f"Unexpected error updating paths: {e}")
             return False
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='s', out_signature='b')
+    def set_locale(self, locale):
+        """
+        Set locale for ADMX parsing and reload data.
+
+        Args:
+            locale: Locale string (e.g., 'ru-RU', 'en-US', 'ru_RU.UTF-8')
+
+        Returns:
+            True if successful, False otherwise
+        """
+        logger.info(f"set_locale method called with locale: {locale}")
+        success = self.data_store.set_locale(locale)
+        if success:
+            self.locale_changed(self.data_store.locale)
+        return success
+
+    @dbus.service.method('org.altlinux.GPUIService', out_signature='s')
+    def get_locale(self):
+        """
+        Get current locale used for ADMX parsing.
+
+        Returns:
+            Current locale string (e.g., 'ru-RU', 'en-US')
+        """
+        return self.data_store.locale
+
+    @dbus.service.signal('org.altlinux.GPUIService')
+    def locale_changed(self, locale):
+        """
+        Signal emitted when locale is changed.
+
+        Args:
+            locale: New locale string
+        """
+        logger.info(f"locale_changed signal emitted: {locale}")

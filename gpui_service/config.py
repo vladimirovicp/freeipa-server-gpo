@@ -32,6 +32,7 @@ logger = logging.getLogger('gpuiservice')
 DEFAULT_MONITOR_PATH = '/usr/share/PolicyDefinitions'
 DEFAULT_SYSVOL_PATH = '/var/lib/freeipa/sysvol'
 GSETTINGS_SCHEMA = 'org.altlinux.gpuiservice'
+SUPPORTED_LOCALES = ['ru-RU', 'en-US']
 
 
 def get_gsettings() -> Optional[Gio.Settings]:
@@ -100,3 +101,56 @@ def get_sysvol_path(settings: Optional[Gio.Settings] = None) -> str:
 
     logger.info(f"Using default sysvol path: {DEFAULT_SYSVOL_PATH}")
     return DEFAULT_SYSVOL_PATH
+
+
+def get_locale(settings: Optional[Gio.Settings] = None) -> str:
+    """
+    Get locale from GSettings for ADMX parsing.
+
+    Args:
+        settings: Optional Gio.Settings object. If None, will attempt
+                  to get GSettings automatically.
+
+    Returns:
+        Locale string from GSettings, or empty string (use system locale).
+    """
+    if settings is None:
+        settings = get_gsettings()
+
+    if settings:
+        try:
+            locale = settings.get_string('locale')
+            if locale:
+                logger.info(f"Using locale from GSettings: {locale}")
+                return locale
+        except Exception as e:
+            logger.debug(f"Could not read 'locale' from GSettings: {e}")
+
+    logger.info("Using system locale (GSettings locale is empty)")
+    return ''
+
+
+def set_locale(locale: str, settings: Optional[Gio.Settings] = None) -> bool:
+    """
+    Set locale in GSettings for ADMX parsing.
+
+    Args:
+        locale: Locale string to set (e.g., 'ru-RU', 'en-US')
+        settings: Optional Gio.Settings object. If None, will attempt
+                  to get GSettings automatically.
+
+    Returns:
+        True if successful, False otherwise.
+    """
+    if settings is None:
+        settings = get_gsettings()
+
+    if settings:
+        try:
+            settings.set_string('locale', locale)
+            logger.info(f"Set locale in GSettings: {locale}")
+            return True
+        except Exception as e:
+            logger.error(f"Could not set 'locale' in GSettings: {e}")
+
+    return False

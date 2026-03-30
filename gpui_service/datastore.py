@@ -24,27 +24,33 @@ from pathlib import Path
 import logging
 import json
 import ast
+import locale as locale_module
 from typing import Any, Optional, Union
 
 try:
     from .parse_admx_structure import AdmxParser
     from . import utils
+    from .config import set_locale as gsettings_set_locale
 except ImportError:
     from parse_admx_structure import AdmxParser
     import utils
+    from config import set_locale as gsettings_set_locale
 
 logger = logging.getLogger('gpuiservice')
+
+SUPPORTED_LOCALES = {'ru-RU', 'en-US'}
 
 class GPODataStore:
     """Storage for ADMX policy data loaded from directory"""
 
-    # Categories with '/' in names that need special handling
     SLASH_CATEGORIES = {"CD/DVD Applications"}
 
     def __init__(self, sysvol_path='/var/lib/freeipa/sysvol'):
         self.data = {}
         self.lock = threading.RLock()
         self.sysvol_path = sysvol_path
+        self.locale = self.get_system_locale()
+        self.monitor_path = None
         self.gpt_worker = None
         self.gpprefs_worker = None
         try:
@@ -62,6 +68,60 @@ class GPODataStore:
         except ImportError as exp:
             logger.warning(f"GPPrefsWorker not available: {exp}")
             logger.warning("Group Policy Preferences operations will be limited")
+
+    def get_system_locale(self) -> str:
+        """
+        Get system locale in ADMX format (e.g., 'ru-RU', 'en-US').
+
+        Returns:
+            System locale string in ADMX format.
+        """
+        try:
+            loc, _ = locale_module.getlocale()
+            if loc:
+                return self.normalize_locale(loc)
+        except Exception as e:
+            logger.debug(f"Could not get system locale: {e}")
+        return 'en-US'
+
+    def normalize_locale(self, locale_str: str) -> str:
+        """
+        Normalize locale string to ADMX format.
+
+        Accepts various formats:
+        - 'ru_RU.UTF-8' -> 'ru-RU'
+        - 'ru-RU' -> 'ru-RU'
+        - 'ru' -> 'ru-RU'
+        - 'en' -> 'en-US'
+
+        Args:
+            locale_str: Locale string in any format.
+
+        Returns:
+            Normalized locale string in ADMX format.
+        """
+        if not locale_str:
+            return self.get_system_locale()
+
+        # Normalize: ru_RU -> ru-RU, strip encoding
+        normalized = locale_str.split('.')[0].replace('_', '-')
+
+        # Check if already supported
+        if normalized in SUPPORTED_LOCALES:
+            return normalized
+
+        # Try to map language code
+        lang = normalized.split('-')[0].lower()
+        locale_map = {
+            'ru': 'ru-RU',
+            'en': 'en-US',
+        }
+        if lang in locale_map:
+            return locale_map[lang]
+
+        # Fallback to system locale
+        logger.warning(f"Unsupported locale '{locale_str}', using system locale")
+        return self.get_system_locale()
 
     def _find_category_with_slash(self, categories, parts, start_index):
         """
@@ -178,9 +238,52 @@ class GPODataStore:
 
         return None
 
-    def load_from_directory(self, directory_path='/usr/share/PolicyDefinitions'):
-        """Load ADMX policy definitions from directory"""
-        self.data = AdmxParser.build_result_for_dir(directory_path)
+    def load_from_directory(self, directory_path='/usr/share/PolicyDefinitions', locale: str = None):
+        """
+        Load ADMX policy definitions from directory with specified locale.
+
+        Args:
+            directory_path: Path to directory containing ADMX files.
+            locale: Locale for ADML parsing. If None, uses current locale.
+        """
+        if locale is None:
+            locale = self.locale
+        self.monitor_path = directory_path
+        self.locale = self.normalize_locale(locale)
+        logger.info(f"Loading ADMX data from {directory_path} with locale {self.locale}")
+        self.data = AdmxParser.build_result_for_dir(directory_path, self.locale)
+
+    def set_locale(self, locale: str) -> bool:
+        """
+        Set locale and reload ADMX data.
+
+        Args:
+            locale: Locale string (e.g., 'ru-RU', 'en-US', 'ru_RU.UTF-8')
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        normalized = self.normalize_locale(locale)
+
+        if normalized == self.locale and self.data:
+            logger.info(f"Locale already set to {normalized}")
+            return True
+
+        # Clear cache before reloading
+        AdmxParser.clear_cache()
+
+        # Update GSettings
+        gsettings_set_locale(normalized)
+
+        # Reload data if monitor_path is set
+        if self.monitor_path:
+            self.load_from_directory(self.monitor_path, normalized)
+            logger.info(f"Locale changed to {normalized}, data reloaded")
+        else:
+            self.locale = normalized
+            logger.info(f"Locale set to {normalized}, will be used on next load")
+
+        return True
 
     def get(self, path: str) -> Union[dict, list, str, int, None]:
         """
