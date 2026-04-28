@@ -82,8 +82,12 @@ class GPUIService(dbus.service.Object):
                     <method name="reload">
                     <arg name="success" direction="out" type="b"/>
                     </method>
-                    <method name="save_preferences">
-                    <arg name="json_data" direction="in" type="s"/>
+                    <method name="save_preference">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="target" direction="in" type="s"/>
+                    <arg name="pref_type" direction="in" type="s"/>
+                    <arg name="value" direction="in" type="s"/>
+                    <arg name="uid" direction="in" type="s"/>
                     <arg name="result" direction="out" type="v"/>
                     </method>
                     <method name="get_preferences">
@@ -263,27 +267,28 @@ class GPUIService(dbus.service.Object):
         logger.warning("No monitor path set, cannot reload")
         return False
 
-    @dbus.service.method('org.altlinux.GPUIService', in_signature='s', out_signature='v')
-    def save_preferences(self, json_data):
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='sssss', out_signature='v')
+    def save_preference(self, name_gpt, target, pref_type, value, uid):
         """
-        Save Group Policy Preferences from JSON data
+        Save a single Group Policy Preference
 
         Args:
-            json_data: JSON string containing preferences
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            pref_type: Preference type (Files, Folders, etc., NOT Registry)
+            value: JSON string with type-specific properties
+            uid: UID of existing preference to update, empty string to create new
 
         Returns:
             dict with results as JSON string
         """
-        logger.info(f"save_preferences method called with json_data: {json_data[:200]}...")
+        logger.info(f"save_preference method called with name_gpt: {name_gpt}, target: {target}, pref_type: {pref_type}, uid: {uid}")
         try:
-            result = self.data_store.save_preferences(json_data)
+            result = self.data_store.save_preference(name_gpt, target, pref_type, value, uid)
             return json.dumps(result, default=str, ensure_ascii=False)
-        except json.JSONDecodeError as e:
-            logger.error(f"Invalid JSON in save_preferences: {e}")
-            return json.dumps({'success': False, 'message': f'Invalid JSON: {e}'}, ensure_ascii=False)
         except Exception as e:
-            logger.exception(f"Unexpected error in save_preferences: {e}")
-            return json.dumps({'success': False, 'message': str(e)}, ensure_ascii=False)
+            logger.exception(f"Unexpected error in save_preference: {e}")
+            return json.dumps({'success': False, 'message': str(e), 'uid': uid}, ensure_ascii=False)
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='v')
     def get_preferences(self, gpo_guid, scope, pref_type):

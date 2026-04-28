@@ -183,41 +183,61 @@ class GPPrefsWorker:
             xml_file_name = "{}.xml".format(pref_type.lower())
         return pref_dir / pref_type / xml_file_name
 
-    def _validate_json(self, data):
+    NAME_DERIVE_MAP = {
+        'Files': lambda p: os.path.basename(p.get('targetPath', '')),
+        'Folders': lambda p: p.get('path', ''),
+        'Shortcuts': lambda p: os.path.basename(p.get('shortcutPath', '')),
+        'Environment': lambda p: p.get('name', ''),
+        'IniFiles': lambda p: p.get('path', ''),
+        'Drives': lambda p: 'Drive {}'.format(p.get('letter', '')),
+        'Printers': lambda p: p.get('path', ''),
+        'Services': lambda p: p.get('serviceName', ''),
+        'ScheduledTasks': lambda p: p.get('name', ''),
+        'NetworkShares': lambda p: p.get('name', ''),
+    }
+
+    COMMON_ATTR_KEYS = {
+        '_bypassErrors', '_userContext', '_removePolicy',
+        '_desc', '_status', '_image', '_filters',
+    }
+
+    def _derive_name(self, pref_type, properties):
         """
-        Validate input JSON structure
+        Auto-derive preference display name from type-specific properties.
 
         Args:
-            data: dict parsed from JSON
+            pref_type: Preference type
+            properties: dict of type-specific properties
 
-        Raises:
-            ValueError: if validation fails
+        Returns:
+            Derived name string
         """
-        required = ['gpo_guid', 'scope', 'preferences']
-        for field in required:
-            if field not in data:
-                raise ValueError("Missing required field: {}".format(field))
+        derive_fn = self.NAME_DERIVE_MAP.get(pref_type)
+        if derive_fn:
+            return derive_fn(properties)
+        return ''
 
-        if data['scope'] not in ['Machine', 'User']:
-            raise ValueError("scope must be 'Machine' or 'User'")
+    def _extract_common_attrs(self, value_dict):
+        """
+        Extract common attributes (prefixed with '_') from value dict.
 
-        if not isinstance(data['preferences'], list):
-            raise ValueError("preferences must be a list")
+        Args:
+            value_dict: Raw value dict from caller
 
-        for pref in data['preferences']:
-            if 'type' not in pref:
-                raise ValueError("Each preference must have 'type' field")
-            if pref['type'] not in self.OUTER_CLSID_MAP:
-                raise ValueError("Unknown preference type: {}".format(pref['type']))
-            if 'properties' not in pref:
-                raise ValueError("Preference {} missing 'properties'".format(pref.get('uid', 'unknown')))
-            # Validate action if present
-            if 'action' in pref['properties']:
-                if pref['properties']['action'].upper() not in self.VALID_ACTIONS:
-                    raise ValueError("Invalid action: {}".format(pref['properties']['action']))
-
-            # Validate properties for the specific type
-            self._validate_properties(pref['type'], pref['properties'])
+        Returns:
+            Tuple of (common_attrs, properties):
+            - common_attrs: dict with _stripped keys
+            - properties: dict with type-specific properties only
+        """
+        common_attrs = {}
+        properties = {}
+        for key, val in value_dict.items():
+            if key in self.COMMON_ATTR_KEYS:
+                clean_key = key.lstrip('_')
+                common_attrs[clean_key] = val
+            else:
+                properties[key] = val
+        return common_attrs, properties
 
     def _validate_properties(self, pref_type, properties):
         """
@@ -886,90 +906,110 @@ class GPPrefsWorker:
 
         return pref_elem
 
-    def save_preferences(self, json_data):
+    def save_preference(self, gpo_guid, scope, pref_type, value_json, uid=''):
         """
-        Save preferences to XML files in SYSVOL
+        Save a single Group Policy Preference to XML file in SYSVOL.
 
         Args:
-            json_data: JSON string or dict containing preferences
+            gpo_guid: GUID or name of the GPO directory
+            scope: 'Machine' or 'User'
+            pref_type: Preference type (Files, Folders, Shortcuts, etc., NOT Registry)
+            value_json: JSON string with type-specific properties and optional
+                        common attrs prefixed with '_' (_bypassErrors, _userContext,
+                        _removePolicy, _desc, _status, _image, _filters)
+            uid: UID of existing preference to update, empty string to create new
 
         Returns:
-            dict with results: {'success': bool, 'message': str, 'files': list}
+            dict with results: {'success': bool, 'message': str, 'uid': str}
         """
         try:
-            # Parse JSON if string
-            if isinstance(json_data, str):
-                data = json.loads(json_data)
-            else:
-                data = json_data
-
-            # Validate input
-            self._validate_json(data)
-
-            gpo_guid = data['gpo_guid']
-            scope = data['scope']
-
-            # Group preferences by type for separate XML files
-            prefs_by_type = {}
-            for pref in data['preferences']:
-                pref = self._ensure_uid(pref)
-                pref = self._ensure_changed(pref)
-                pref_type = pref['type']
-                if pref_type not in prefs_by_type:
-                    prefs_by_type[pref_type] = []
-                prefs_by_type[pref_type].append(pref)
-
-            saved_files = []
-            errors = []
-
-            # Process each preference type separately
-            for pref_type, prefs in prefs_by_type.items():
-                try:
-                    xml_path = self._get_xml_file_path(gpo_guid, scope, pref_type)
-                    xml_path.parent.mkdir(parents=True, exist_ok=True)
-
-                    # Read existing XML if present
-                    collection = self._read_or_create_collection(xml_path, pref_type)
-
-                    # Add or update preferences in collection
-                    for pref in prefs:
-                        self._update_collection(collection, pref)
-
-                    # Write XML
-                    xml_content = self._pretty_xml(collection)
-                    xml_path.write_text(xml_content, encoding='utf-8')
-                    saved_files.append(str(xml_path))
-
-                    logger.info("Saved {} {} preferences to {}".format(len(prefs), pref_type, xml_path))
-
-                except Exception as e:
-                    error_msg = "Failed to save {} preferences: {}".format(pref_type, str(e))
-                    logger.error(error_msg)
-                    logger.error(traceback.format_exc())
-                    errors.append(error_msg)
-
-            if errors:
+            if pref_type == 'Registry':
                 return {
                     'success': False,
-                    'message': "Partial success with errors: {}".format('; '.join(errors)),
-                    'files': saved_files,
-                    'errors': errors
+                    'message': "Registry preferences must use the 'set' method instead",
+                    'uid': uid,
                 }
+
+            if pref_type not in self.OUTER_CLSID_MAP:
+                return {
+                    'success': False,
+                    'message': "Unknown preference type: {}".format(pref_type),
+                    'uid': uid,
+                }
+
+            if scope not in ('Machine', 'User'):
+                return {
+                    'success': False,
+                    'message': "scope must be 'Machine' or 'User'",
+                    'uid': uid,
+                }
+
+            if isinstance(value_json, str):
+                value_dict = json.loads(value_json)
+            else:
+                value_dict = value_json
+
+            if not isinstance(value_dict, dict):
+                return {
+                    'success': False,
+                    'message': "value must be a JSON object",
+                    'uid': uid,
+                }
+
+            common_attrs, properties = self._extract_common_attrs(value_dict)
+
+            self._validate_properties(pref_type, properties)
+
+            if uid:
+                pref_uid = uid
+                guid_pattern = r'^\{?[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}\}?$'
+                if not re.match(guid_pattern, pref_uid, re.IGNORECASE):
+                    return {
+                        'success': False,
+                        'message': "Invalid UID format: {}".format(uid),
+                        'uid': uid,
+                    }
+            else:
+                pref_uid = '{' + str(uuid.uuid4()).upper() + '}'
+
+            derived_name = self._derive_name(pref_type, properties)
+
+            pref = {
+                'type': pref_type,
+                'uid': pref_uid,
+                'changed': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                'name': derived_name,
+                'properties': properties,
+            }
+            pref.update(common_attrs)
+
+            xml_path = self._get_xml_file_path(gpo_guid, scope, pref_type)
+            xml_path.parent.mkdir(parents=True, exist_ok=True)
+
+            collection = self._read_or_create_collection(xml_path, pref_type)
+            self._update_collection(collection, pref)
+
+            xml_content = self._pretty_xml(collection)
+            xml_path.write_text(xml_content, encoding='utf-8')
+
+            logger.info("Saved {} preference {} to {}".format(pref_type, pref_uid, xml_path))
 
             return {
                 'success': True,
-                'message': "Successfully saved preferences to {} file(s)".format(len(saved_files)),
-                'files': saved_files
+                'message': "Successfully saved {} preference to {}".format(pref_type, xml_path),
+                'uid': pref_uid,
             }
 
+        except json.JSONDecodeError as e:
+            logger.error("Invalid JSON in save_preference: {}".format(e))
+            return {'success': False, 'message': "Invalid JSON: {}".format(e), 'uid': uid}
+        except ValueError as e:
+            logger.error("Validation error in save_preference: {}".format(e))
+            return {'success': False, 'message': str(e), 'uid': uid}
         except Exception as e:
-            logger.error("Failed to save preferences: {}".format(e))
+            logger.error("Failed to save preference: {}".format(e))
             logger.error(traceback.format_exc())
-            return {
-                'success': False,
-                'message': str(e),
-                'files': []
-            }
+            return {'success': False, 'message': str(e), 'uid': uid}
 
     def _read_or_create_collection(self, xml_path, pref_type):
         """

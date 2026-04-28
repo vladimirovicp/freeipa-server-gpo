@@ -698,46 +698,43 @@ class GPODataStore:
 
         return []
 
-    def save_preferences(self, json_data):
+    def save_preference(self, name_gpt, target, pref_type, value, uid=''):
         """
-        Save Group Policy Preferences from JSON data
+        Save a single Group Policy Preference
 
         Args:
-            json_data: JSON string or dict containing preferences
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            pref_type: Preference type (Files, Folders, etc., NOT Registry)
+            value: JSON string with type-specific properties
+            uid: UID of existing preference to update, empty string to create new
 
         Returns:
-            dict with results
+            dict with results: {'success': bool, 'message': str, 'uid': str}
         """
         if self.gpprefs_worker is None:
             logger.error("GPPrefsWorker not available")
-            return {'success': False, 'message': 'GPPrefsWorker not available'}
+            return {'success': False, 'message': 'GPPrefsWorker not available', 'uid': uid}
+
+        if not name_gpt:
+            logger.error("name_gpt parameter is required")
+            return {'success': False, 'message': 'name_gpt is required', 'uid': uid}
 
         try:
-            # Parse JSON if string, resolve gpo_guid if needed
-            if isinstance(json_data, str):
-                data = json.loads(json_data)
-            else:
-                data = json_data
-
-            # Resolve gpo_guid if it's a UNC or absolute path
-            if 'gpo_guid' in data:
-                resolved_guid = utils.resolve_gpo_path(data['gpo_guid'], self.sysvol_path)
-                data['gpo_guid'] = resolved_guid
-
-            result = self.gpprefs_worker.save_preferences(data)
-            # TODO: Update GPO version in LDAP and GPT.INI
+            resolved = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            result = self.gpprefs_worker.save_preference(resolved, target, pref_type, value, uid)
             if result.get('success'):
-                self._update_gpo_version(data)
+                self._update_gpo_version({'gpo_guid': resolved})
             return result
         except json.JSONDecodeError as exp:
-            logger.error(f"Invalid JSON in preferences data: {exp}")
-            return {'success': False, 'message': f'Invalid JSON: {exp}'}
+            logger.error(f"Invalid JSON in preference value: {exp}")
+            return {'success': False, 'message': f'Invalid JSON: {exp}', 'uid': uid}
         except (OSError, IOError) as exp:
-            logger.error(f"I/O error saving preferences: {exp}")
-            return {'success': False, 'message': str(exp)}
+            logger.error(f"I/O error saving preference: {exp}")
+            return {'success': False, 'message': str(exp), 'uid': uid}
         except Exception as exp:
-            logger.exception(f"Unexpected error saving preferences: {exp}")
-            return {'success': False, 'message': str(exp)}
+            logger.exception(f"Unexpected error saving preference: {exp}")
+            return {'success': False, 'message': str(exp), 'uid': uid}
 
     def get_preferences(self, gpo_guid, scope, pref_type=None):
         """
