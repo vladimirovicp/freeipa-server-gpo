@@ -44,35 +44,94 @@ class GPPrefsWorker:
     Group Policy Preferences XML files according to MS-GPPREF specification.
     """
 
-    # CLSID mapping for each preference type (Inner Element CLSID from MS-GPPREF)
     OUTER_CLSID_MAP = {
-        'Registry': '{35378EAC-683F-11D2-A89A-00C04FBBCFA2}',
-        'Files': '{7B849a34-0AB9-4CFF-92B2-5C5D5B26F0CE}',
-        'Folders': '{B087BE9D-ED37-454F-AF9C-04291E351182}',
-        'Shortcuts': '{C418DD9D-0D14-4EFB-8FBF-CFE535C8FAC7}',
+        'Registry': '{A3CCFC41-DFDB-43a5-8D26-0FE8B954DA51}',
+        'Files': '{215B2E53-57CE-475c-80FE-9EEC14635851}',
+        'Folders': '{77CC39E7-3D16-4f8f-AF86-EC0BBEE2C861}',
+        'Shortcuts': '{872ECB34-B2EC-401b-A585-D32574AA90EE}',
         'Environment': '{BF141A63-327B-438a-B9BF-2C188F13B7AD}',
-        'IniFiles': '{EEFACE84-D3D8-4680-8D4B-BF103E759448}',
-        'Drives': '{5794DAFD-BE60-433F-88A2-1A31939AC01F}',
+        'IniFiles': '{694C651A-08F2-47fa-A427-34C4F62BA207}',
+        'Drives': '{8FDDCC1A-0C3C-43cd-A6B4-71A6DF20DA8C}',
         'Printers': '{1F577D12-3D1B-471e-A1B7-060317597B9C}',
-        'Services': '{91FBB303-0CD5-4055-BF42-E512A681B325}',
-        'ScheduledTasks': '{AADCED64-746C-4633-A97C-D61349046527}',
+        'Services': '{2CFB484A-4E96-4b5d-A0B6-093D2F91E6AE}',
+        'ScheduledTasks': '{CC63F200-7309-4ba0-B154-A71CD118DBCC}',
         'NetworkShares': '{520870D8-A6E7-47e8-A8D8-E6A4E76EAEC2}',
     }
 
-    # File name mapping (XML file names for each type)
     INNER_CLSID_MAP = {
         'Registry': '{9CD4B2F4-923D-47F5-A062-E897DD1DAD50}',
-        'Files': '{50BE44C8-567A-4ED1-B1D0-9234FE1F38AF}',
+        'Files': '{50BE44C8-567A-4ed1-B1D0-9234FE1F38AF}',
         'Folders': '{07DA02F5-F9CD-4397-A550-4AE21B6B4BD3}',
-        'Shortcuts': '{4F2F7C55-2790-433E-8127-0739D1CFA327}',
-        'Environment': '{78570023-8373-4A19-BA80-2F150738EA19}',
+        'Shortcuts': '{4F2F7C55-2790-433e-8127-0739D1CFA327}',
+        'Environment': '{78570023-8373-4a19-BA80-2F150738EA19}',
         'IniFiles': '{EEFACE84-D3D8-4680-8D4B-BF103E759448}',
-        'Drives': '{935D1B74-9CB8-4E3C-9914-7DD559B7A417}',
-        'Printers': '{9A5E9697-9095-436D-A0EE-4D128FDFBCE5}',
-        'Services': '{AB6F0B67-341F-4E51-92F9-005FBFBA1A43}',
-        'ScheduledTasks': '{2DEECB1C-261F-4E13-9B21-16FB83BC03BD}',
+        'Drives': '{935D1B74-9CB8-4e3c-9914-7DD559B7A417}',
+        'Printers': '{9A5E9697-9095-436d-A0EE-4D128FDFBCE5}',
+        'Services': '{AB6F0B67-341F-4e51-92F9-005FBFBA1A43}',
+        'ScheduledTasks': '{2DEECB1C-261F-4e13-9B21-16FB83BC03BD}',
         'NetworkShares': '{2888C5E7-94FC-4739-90AA-2C1536D68BC0}',
     }
+
+    OUTER_ELEMENT_MAP = {
+        'Registry': 'RegistrySettings',
+        'Files': 'Files',
+        'Folders': 'Folders',
+        'Shortcuts': 'Shortcuts',
+        'Environment': 'EnvironmentVariables',
+        'IniFiles': 'IniFiles',
+        'Drives': 'Drives',
+        'Printers': 'Printers',
+        'Services': 'NTServices',
+        'ScheduledTasks': 'ScheduledTasks',
+        'NetworkShares': 'NetworkShareSettings',
+    }
+
+    INNER_ELEMENT_MAP = {
+        'Registry': 'Registry',
+        'Files': 'File',
+        'Folders': 'Folder',
+        'Shortcuts': 'Shortcut',
+        'Environment': 'EnvironmentVariable',
+        'IniFiles': 'Ini',
+        'Drives': 'Drive',
+        'Printers': 'SharedPrinter',
+        'Services': 'NTService',
+        'ScheduledTasks': 'Task',
+        'NetworkShares': 'NetShare',
+    }
+
+    PATH_PROPERTIES = {
+        'Files': {'fromPath', 'targetPath'},
+        'Folders': {'path'},
+        'Shortcuts': {'targetPath', 'shortcutPath', 'startIn', 'iconPath'},
+        'Environment': set(),
+        'IniFiles': {'path'},
+        'Drives': {'path'},
+        'Printers': {'path'},
+        'Services': set(),
+        'ScheduledTasks': {'appName', 'startIn'},
+        'NetworkShares': {'path'},
+    }
+
+    INNER_TAG_TO_TYPE = {v: k for k, v in {
+        'Registry': 'Registry',
+        'Files': 'File',
+        'Folders': 'Folder',
+        'Shortcuts': 'Shortcut',
+        'Environment': 'EnvironmentVariable',
+        'IniFiles': 'Ini',
+        'Drives': 'Drive',
+        'Printers': 'SharedPrinter',
+        'Services': 'NTService',
+        'ScheduledTasks': 'Task',
+        'NetworkShares': 'NetShare',
+    }.items()}
+    INNER_TAG_TO_TYPE['Collection'] = 'Registry'
+    INNER_TAG_TO_TYPE['PortPrinter'] = 'Printers'
+    INNER_TAG_TO_TYPE['LocalPrinter'] = 'Printers'
+    INNER_TAG_TO_TYPE['ImmediateTask'] = 'ScheduledTasks'
+    INNER_TAG_TO_TYPE['TaskV2'] = 'ScheduledTasks'
+    INNER_TAG_TO_TYPE['ImmediateTaskV2'] = 'ScheduledTasks'
 
     # XML file names for each preference type
     FILE_NAME_MAP = {
@@ -184,13 +243,13 @@ class GPPrefsWorker:
         return pref_dir / pref_type / xml_file_name
 
     NAME_DERIVE_MAP = {
-        'Files': lambda p: os.path.basename(p.get('targetPath', '')),
-        'Folders': lambda p: p.get('path', ''),
-        'Shortcuts': lambda p: os.path.basename(p.get('shortcutPath', '')),
+        'Files': lambda p: os.path.basename(p.get('targetPath', '').replace('\\', '/')),
+        'Folders': lambda p: os.path.basename(p.get('path', '').replace('\\', '/')),
+        'Shortcuts': lambda p: os.path.basename(p.get('shortcutPath', '').replace('\\', '/')),
         'Environment': lambda p: p.get('name', ''),
-        'IniFiles': lambda p: p.get('path', ''),
+        'IniFiles': lambda p: os.path.basename(p.get('path', '').replace('\\', '/')),
         'Drives': lambda p: 'Drive {}'.format(p.get('letter', '')),
-        'Printers': lambda p: p.get('path', ''),
+        'Printers': lambda p: os.path.basename(p.get('path', '').replace('\\', '/')),
         'Services': lambda p: p.get('serviceName', ''),
         'ScheduledTasks': lambda p: p.get('name', ''),
         'NetworkShares': lambda p: p.get('name', ''),
@@ -754,6 +813,22 @@ class GPPrefsWorker:
         except (ValueError, TypeError):
             return '0'
 
+    def _escape_path(self, value):
+        """
+        Escape single backslashes to double backslashes for MS-GPPREF XML attributes.
+
+        Args:
+            value: string value
+
+        Returns:
+            Escaped string with \\ replaced by \\\\
+        """
+        if not isinstance(value, str):
+            return value
+        if '\\' in value and '\\\\' not in value:
+            return value.replace('\\', '\\\\')
+        return value
+
     def _create_properties_element(self, pref_type, properties):
         """
         Create <Properties> element for a preference
@@ -767,31 +842,29 @@ class GPPrefsWorker:
         """
         props_elem = ET.Element('Properties')
 
-        # Get allowed properties for this type
         schema = self.PROPERTY_SCHEMAS[pref_type]
         allowed = set(schema['required'] + schema['optional'])
+        path_props = self.PATH_PROPERTIES.get(pref_type, set())
 
         for key, value in properties.items():
             if key not in allowed:
-                # Skip unknown properties (should have been validated)
                 continue
             if value is None:
                 continue
-            # Skip SubProp and Triggers - handle as child elements
-            if key in ['SubProp', 'Triggers']:
+            if key in ('SubProp', 'Triggers'):
                 continue
+            if key in path_props and isinstance(value, str):
+                value = self._escape_path(value)
             if isinstance(value, bool):
                 props_elem.set(key, self._bool_to_int(value))
             else:
                 props_elem.set(key, str(value))
 
-        # Handle nested SubProp elements for Registry
         if pref_type == 'Registry' and 'SubProp' in properties:
             for subprop in properties['SubProp']:
                 subprop_elem = self._create_subprop_element(subprop)
                 props_elem.append(subprop_elem)
 
-        # Handle nested Triggers for ScheduledTasks
         if pref_type == 'ScheduledTasks' and 'Triggers' in properties:
             triggers_elem = self._create_triggers_element(properties['Triggers'])
             props_elem.append(triggers_elem)
@@ -864,41 +937,41 @@ class GPPrefsWorker:
             ET.Element for the preference
         """
         pref_type = pref['type']
+        inner_tag = self.INNER_ELEMENT_MAP.get(pref_type, pref_type)
         clsid = self.INNER_CLSID_MAP[pref_type]
 
-        # Create root element for this preference
-        pref_elem = ET.Element(pref_type)
+        pref_elem = ET.Element(inner_tag)
         pref_elem.set('clsid', clsid)
         pref_elem.set('name', pref.get('name', ''))
         pref_elem.set('uid', pref['uid'])
         pref_elem.set('changed', pref['changed'])
 
-        # Optional common attributes
         if 'desc' in pref:
             pref_elem.set('desc', str(pref['desc']))
         if 'status' in pref:
             pref_elem.set('status', str(pref['status']))
+        else:
+            pref_elem.set('status', pref.get('name', ''))
         if 'image' in pref:
             pref_elem.set('image', str(pref['image']))
+        else:
+            pref_elem.set('image', '0')
 
-        # Boolean common attributes (convert to '0'/'1')
         for attr in ['bypassErrors', 'userContext', 'removePolicy']:
             if attr in pref:
                 value = pref[attr]
-                # Special handling for userContext string 'User'/'Machine'
                 if attr == 'userContext' and isinstance(value, str):
                     if value.lower() == 'user':
                         value = True
                     elif value.lower() == 'machine':
                         value = False
-                    # else treat as boolean via _bool_to_int
                 pref_elem.set(attr, self._bool_to_int(value))
+            elif attr == 'bypassErrors':
+                pref_elem.set('bypassErrors', '1')
 
-        # Add Properties
         props_elem = self._create_properties_element(pref_type, pref['properties'])
         pref_elem.append(props_elem)
 
-        # Add Filters if present
         if 'filters' in pref:
             filters_elem = self._create_filter_element(pref['filters'])
             if filters_elem is not None:
@@ -1013,31 +1086,32 @@ class GPPrefsWorker:
 
     def _read_or_create_collection(self, xml_path, pref_type):
         """
-        Read existing XML file or create new Collection element
+        Read existing XML file or create new outer element
 
         Args:
             xml_path: Path or str to XML file
             pref_type: Preference type
 
         Returns:
-            ET.Element for Collection
+            ET.Element for the outer element
         """
+        outer_tag = self.OUTER_ELEMENT_MAP.get(pref_type, pref_type)
+        outer_clsid = self.OUTER_CLSID_MAP.get(pref_type, '')
+
         if os.path.exists(xml_path):
             try:
                 tree = ET.parse(xml_path)
                 root = tree.getroot()
-                if root.tag == 'Collection':
+                if root.tag == outer_tag:
                     return root
                 else:
-                    logger.warning("Root element is not Collection in {}, creating new".format(xml_path))
+                    logger.warning("Root element is not {} in {}, creating new".format(outer_tag, xml_path))
             except ET.ParseError as e:
                 logger.warning("Failed to parse XML file {}: {}, creating new".format(xml_path, e))
 
-        # Create new Collection
-        clsid = self.OUTER_CLSID_MAP[pref_type]
-        collection = ET.Element('Collection')
-        collection.set('clsid', clsid)
-        return collection
+        outer_elem = ET.Element(outer_tag)
+        outer_elem.set('clsid', outer_clsid)
+        return outer_elem
 
     def _update_collection(self, collection, pref):
         """
@@ -1060,7 +1134,7 @@ class GPPrefsWorker:
 
     def _pretty_xml(self, element):
         """
-        Convert XML element to pretty-printed string
+        Convert XML element to pretty-printed string with utf-8 encoding declaration.
 
         Args:
             element: ET.Element
@@ -1070,8 +1144,8 @@ class GPPrefsWorker:
         """
         rough_string = ET.tostring(element, encoding='unicode')
         parsed = minidom.parseString(rough_string)
-        # toprettyxml already includes XML declaration
-        return parsed.toprettyxml(indent='  ')
+        pretty = parsed.toprettyxml(indent='  ', encoding=None)
+        return pretty.replace('<?xml version="1.0" ?>', '<?xml version="1.0" encoding="utf-8"?>', 1)
 
     def read_preferences(self, gpo_guid, scope, pref_type=None):
         """
@@ -1099,13 +1173,14 @@ class GPPrefsWorker:
                     continue
 
                 tree = ET.parse(xml_path)
-                collection = tree.getroot()
-                if collection.tag != 'Collection':
-                    logger.warning("Root element is not Collection in {}".format(xml_path))
+                root = tree.getroot()
+                outer_tag = self.OUTER_ELEMENT_MAP.get(ptype, ptype)
+                if root.tag != outer_tag:
+                    logger.warning("Root element is not {} in {}".format(outer_tag, xml_path))
                     continue
 
                 preferences = []
-                for pref_elem in collection.findall('*'):
+                for pref_elem in root.findall('*'):
                     pref = self._parse_preference_element(pref_elem)
                     preferences.append(pref)
 
@@ -1126,8 +1201,10 @@ class GPPrefsWorker:
         Returns:
             dict representation of preference
         """
+        pref_type = self.INNER_TAG_TO_TYPE.get(pref_elem.tag, pref_elem.tag)
+
         pref = {
-            'type': pref_elem.tag,
+            'type': pref_type,
             'uid': pref_elem.get('uid', ''),
             'name': pref_elem.get('name', ''),
             'changed': pref_elem.get('changed', ''),
@@ -1136,7 +1213,6 @@ class GPPrefsWorker:
             'desc': pref_elem.get('desc', ''),
         }
 
-        # Handle boolean attributes with special handling for userContext
         bypass_errors_val = pref_elem.get('bypassErrors', '0')
         pref['bypassErrors'] = bypass_errors_val == '1'
 
@@ -1151,19 +1227,16 @@ class GPPrefsWorker:
         remove_policy_val = pref_elem.get('removePolicy', '0')
         pref['removePolicy'] = remove_policy_val == '1'
 
-        # Convert numeric attributes
         for attr in ('image', 'status'):
             try:
                 pref[attr] = int(pref[attr])
             except ValueError:
                 pass
 
-        # Parse Properties
         props_elem = pref_elem.find('Properties')
         if props_elem is not None:
             properties = {}
             for key, value in props_elem.items():
-                # Convert numeric strings to int if possible
                 try:
                     properties[key] = int(value)
                 except ValueError:
@@ -1172,8 +1245,7 @@ class GPPrefsWorker:
                     else:
                         properties[key] = value
 
-            # Parse child elements for specific types
-            if pref['type'] == 'Registry':
+            if pref_type == 'Registry':
                 subprops = []
                 for subprop_elem in props_elem.findall('SubProp'):
                     subprop = {}
@@ -1189,7 +1261,7 @@ class GPPrefsWorker:
                 if subprops:
                     properties['SubProp'] = subprops
 
-            elif pref['type'] == 'ScheduledTasks':
+            elif pref_type == 'ScheduledTasks':
                 triggers = []
                 for trigger_elem in props_elem.findall('Triggers/Trigger'):
                     trigger = {}
@@ -1208,7 +1280,6 @@ class GPPrefsWorker:
 
             pref['properties'] = properties
 
-        # Parse Filters
         filters_elem = pref_elem.find('Filters')
         if filters_elem is not None:
             filters = {
@@ -1250,26 +1321,25 @@ class GPPrefsWorker:
                 return False
 
             tree = ET.parse(xml_path)
-            collection = tree.getroot()
-            if collection.tag != 'Collection':
-                logger.warning("Root element is not Collection in {}".format(xml_path))
+            root = tree.getroot()
+            outer_tag = self.OUTER_ELEMENT_MAP.get(pref_type, pref_type)
+            if root.tag != outer_tag:
+                logger.warning("Root element is not {} in {}".format(outer_tag, xml_path))
                 return False
 
-            # Find and remove element with matching UID
             removed = False
-            for elem in collection.findall('*'):
+            for elem in root.findall('*'):
                 if elem.get('uid') == uid:
-                    collection.remove(elem)
+                    root.remove(elem)
                     removed = True
                     break
 
             if removed:
-                # If collection becomes empty, delete the file
-                if len(collection) == 0:
+                if len(root) == 0:
                     xml_path.unlink()
                     logger.info("Deleted empty XML file: {}".format(xml_path))
                 else:
-                    xml_content = self._pretty_xml(collection)
+                    xml_content = self._pretty_xml(root)
                     xml_path.write_text(xml_content, encoding='utf-8')
                     logger.info("Deleted preference {} from {}".format(uid, xml_path))
                 return True
