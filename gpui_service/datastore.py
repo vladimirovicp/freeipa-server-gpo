@@ -54,7 +54,10 @@ class GPODataStore:
         self.gpt_worker = None
         self.gpprefs_worker = None
         try:
-            from gptworker import GPTWorker
+            try:
+                from .gptworker import GPTWorker
+            except ImportError:
+                from gptworker import GPTWorker
             self.gpt_worker = GPTWorker(sysvol_path)
             logger.debug(f"GPTWorker initialized with sysvol path: {sysvol_path}")
         except ImportError as exp:
@@ -62,7 +65,10 @@ class GPODataStore:
             logger.warning("GPO policy file operations will be limited")
 
         try:
-            from gpprefs import GPPrefsWorker
+            try:
+                from .gpprefs import GPPrefsWorker
+            except ImportError:
+                from gpprefs import GPPrefsWorker
             self.gpprefs_worker = GPPrefsWorker(sysvol_path)
             logger.debug(f"GPPrefsWorker initialized with sysvol path: {sysvol_path}")
         except ImportError as exp:

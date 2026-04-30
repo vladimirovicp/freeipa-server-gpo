@@ -253,7 +253,10 @@ class GPUIService(dbus.service.Object):
         logger.info("Manual reload requested")
         if self.data_store.monitor_path:
             try:
-                from parse_admx_structure import AdmxParser
+                try:
+                    from .parse_admx_structure import AdmxParser
+                except ImportError:
+                    from parse_admx_structure import AdmxParser
                 AdmxParser.clear_cache()
                 self.data_store.load_from_directory(
                     self.data_store.monitor_path,

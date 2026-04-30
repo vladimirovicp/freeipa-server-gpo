@@ -42,7 +42,10 @@ except Exception as e:
     handler.setFormatter(formatter)
     logger.addHandler(handler)
 
-from daemon import ServiceDaemon
+try:
+    from .daemon import ServiceDaemon
+except ImportError:
+    from daemon import ServiceDaemon
 
 def main():
     """Main entry point"""
