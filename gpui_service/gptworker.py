@@ -26,8 +26,10 @@ import traceback
 
 try:
     from . import utils
+    from .config import DEFAULT_SYSVOL_PATH
 except ImportError:
     import utils
+    from config import DEFAULT_SYSVOL_PATH
 
 logger = logging.getLogger('gpuiservice')
 
@@ -50,7 +52,7 @@ class GPTWorker:
         )
     """
 
-    def __init__(self, sysvol_path='/var/lib/freeipa/sysvol'):
+    def __init__(self, sysvol_path=DEFAULT_SYSVOL_PATH):
         """
         Initialize GPT policy worker
 

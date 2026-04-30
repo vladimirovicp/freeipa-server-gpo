@@ -31,10 +31,12 @@ try:
     from .parse_admx_structure import AdmxParser
     from . import utils
     from .config import set_locale as gsettings_set_locale
+    from .config import DEFAULT_SYSVOL_PATH, DEFAULT_MONITOR_PATH
 except ImportError:
     from parse_admx_structure import AdmxParser
     import utils
     from config import set_locale as gsettings_set_locale
+    from config import DEFAULT_SYSVOL_PATH, DEFAULT_MONITOR_PATH
 
 logger = logging.getLogger('gpuiservice')
 
@@ -45,7 +47,7 @@ class GPODataStore:
 
     SLASH_CATEGORIES = {"CD/DVD Applications", "Приложения для CD/DVD"}
 
-    def __init__(self, sysvol_path='/var/lib/freeipa/sysvol'):
+    def __init__(self, sysvol_path=DEFAULT_SYSVOL_PATH):
         self.data = {}
         self.lock = threading.RLock()
         self.sysvol_path = sysvol_path
@@ -246,7 +248,7 @@ class GPODataStore:
 
         return None
 
-    def load_from_directory(self, directory_path='/usr/share/PolicyDefinitions', locale: str = None):
+    def load_from_directory(self, directory_path=DEFAULT_MONITOR_PATH, locale: str = None):
         """
         Load ADMX policy definitions from directory with specified locale.
 
