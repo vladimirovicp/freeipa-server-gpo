@@ -212,8 +212,7 @@ class GPUIService(dbus.service.Object):
             Array of matching parameter paths as JSON string
         """
         logger.info(f"find method called with pattern: {search_pattern}, type: {search_type}")
-        # TODO: Implement actual search functionality
-        result = []
+        result = self.data_store.find(search_pattern, search_type or 'all')
         return json.dumps(result, ensure_ascii=False)
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='v')

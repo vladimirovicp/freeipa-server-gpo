@@ -724,6 +724,69 @@ class GPODataStore:
 
         return []
 
+    def find(self, search_pattern: str, search_type: str = 'all') -> list[str]:
+        """
+        Search loaded ADMX data for policies and categories matching pattern.
+
+        Args:
+            search_pattern: Text to search for (case-insensitive)
+            search_type: 'name' (displayName/id), 'help' (help text),
+                        'category', or 'all'
+
+        Returns:
+            List of matching paths
+        """
+        with self.lock:
+            results = []
+            pattern = search_pattern.lower()
+            self._search_node(self.data, '', pattern, search_type, results)
+            return results
+
+    def _search_node(self, node, current_path, pattern, search_type, results):
+        """
+        Recursively search ADMX data tree.
+
+        Args:
+            node: Current data node
+            current_path: Accumulated path string
+            pattern: Lowercase search pattern
+            search_type: Type of search
+            results: Accumulating results list
+        """
+        if isinstance(node, dict):
+            display_name = node.get('displayName', '')
+            cat_name = node.get('category', '')
+            help_text = node.get('help', '')
+            node_id = node.get('id', '')
+
+            match = False
+            if search_type in ('name', 'all'):
+                if pattern in display_name.lower() or pattern in node_id.lower():
+                    match = True
+            if search_type == 'help' and pattern in help_text.lower():
+                match = True
+            if search_type == 'category' and pattern in cat_name.lower():
+                match = True
+            if search_type == 'all' and not match:
+                if pattern in help_text.lower() or pattern in cat_name.lower():
+                    match = True
+
+            if match and current_path:
+                results.append(current_path)
+
+            for key, value in node.items():
+                if key in ('header', 'metadata'):
+                    continue
+                child_path = '{}/{}'.format(current_path, key) if current_path else key
+                self._search_node(value, child_path, pattern, search_type, results)
+
+        elif isinstance(node, list):
+            for item in node:
+                if isinstance(item, dict):
+                    cat_name = item.get('category', '')
+                    child_path = '{}/{}'.format(current_path, cat_name) if current_path else cat_name
+                    self._search_node(item, child_path, pattern, search_type, results)
+
     def save_preference(self, name_gpt, target, pref_type, value, uid=''):
         """
         Save a single Group Policy Preference
