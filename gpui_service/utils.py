@@ -72,3 +72,21 @@ def is_unc_path(path: str | None) -> bool:
         True if path is a UNC path (starts with \\\\), False otherwise.
     """
     return isinstance(path, str) and path.startswith('\\\\')
+
+
+def validate_path_in_sysvol(resolved_path: str, sysvol_path: str) -> None:
+    """
+    Validate that resolved_path does not escape sysvol_path via path traversal.
+
+    Args:
+        resolved_path: Path to validate (must be already resolved/joined)
+        sysvol_path: Base sysvol path
+
+    Raises:
+        ValueError: If path traversal is detected
+    """
+    from pathlib import Path
+    real_sysvol = Path(sysvol_path).resolve()
+    real_path = Path(resolved_path).resolve()
+    if not str(real_path).startswith(str(real_sysvol)):
+        raise ValueError("Path traversal detected: {} escapes {}".format(resolved_path, sysvol_path))

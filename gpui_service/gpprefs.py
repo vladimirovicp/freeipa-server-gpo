@@ -235,8 +235,15 @@ class GPPrefsWorker:
 
         Returns:
             Path object to the XML file
+
+        Raises:
+            ValueError: If path traversal is detected
         """
         pref_dir = self._get_preferences_path(gpo_guid, scope)
+        real_sysvol = self.sysvol_path.resolve()
+        real_pref = pref_dir.resolve()
+        if not str(real_pref).startswith(str(real_sysvol)):
+            raise ValueError("Path traversal detected: {} escapes {}".format(gpo_guid, self.sysvol_path))
         xml_file_name = self.FILE_NAME_MAP.get(pref_type)
         if not xml_file_name:
             xml_file_name = "{}.xml".format(pref_type.lower())

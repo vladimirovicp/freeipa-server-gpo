@@ -99,8 +99,12 @@ class GPTWorker:
 
         Returns:
             Path object to the registry.pol file
+
+        Raises:
+            ValueError: If path traversal is detected
         """
         gpo_full_path = self.sysvol_path / gpo_path
+        utils.validate_path_in_sysvol(str(gpo_full_path), str(self.sysvol_path))
         if policy_type == 'Machine':
             return gpo_full_path / 'Machine' / 'Registry.pol'
         else:  # User
