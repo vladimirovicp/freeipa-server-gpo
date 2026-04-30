@@ -523,6 +523,9 @@ class GPODataStore:
         except (OSError, IOError) as exp:
             logger.error(f"I/O error writing policy to {resolved_name_gpt}: {exp}")
             return False
+        except (ValueError, json.JSONDecodeError) as exp:
+            logger.error(f"Data error setting policy value: {exp}")
+            return False
         except Exception as exp:
             logger.exception(f"Unexpected error setting policy value: {exp}")
             return False
@@ -645,6 +648,9 @@ class GPODataStore:
         except (OSError, IOError) as exp:
             logger.error(f"I/O error reading policy from {resolved_name_gpt}: {exp}")
             return None
+        except (ValueError, json.JSONDecodeError) as exp:
+            logger.error(f"Data error getting policy value: {exp}")
+            return None
         except Exception as exp:
             logger.exception(f"Unexpected error getting policy value: {exp}")
             return None
@@ -751,6 +757,9 @@ class GPODataStore:
         except (OSError, IOError) as exp:
             logger.error(f"I/O error saving preference: {exp}")
             return {'success': False, 'message': str(exp), 'uid': uid}
+        except ValueError as exp:
+            logger.error(f"Data error saving preference: {exp}")
+            return {'success': False, 'message': str(exp), 'uid': uid}
         except Exception as exp:
             logger.exception(f"Unexpected error saving preference: {exp}")
             return {'success': False, 'message': str(exp), 'uid': uid}
@@ -780,6 +789,9 @@ class GPODataStore:
             return self.gpprefs_worker.read_preferences(resolved_gpo_guid, scope, pref_type)
         except (OSError, IOError) as exp:
             logger.error(f"I/O error reading preferences from {gpo_guid}: {exp}")
+            return {}
+        except (ValueError, json.JSONDecodeError) as exp:
+            logger.error(f"Data error getting preferences: {exp}")
             return {}
         except Exception as exp:
             logger.exception(f"Unexpected error getting preferences: {exp}")
@@ -815,6 +827,9 @@ class GPODataStore:
             return success
         except (OSError, IOError) as exp:
             logger.error(f"I/O error deleting preference from {gpo_guid}: {exp}")
+            return False
+        except (ValueError, json.JSONDecodeError) as exp:
+            logger.error(f"Data error deleting preference: {exp}")
             return False
         except Exception as exp:
             logger.exception(f"Unexpected error deleting preference: {exp}")

@@ -1091,6 +1091,12 @@ class GPPrefsWorker:
         except ValueError as e:
             logger.error("Validation error in save_preference: {}".format(e))
             return {'success': False, 'message': str(e), 'uid': uid}
+        except (OSError, IOError, PermissionError) as e:
+            logger.error("I/O error in save_preference: {}".format(e))
+            return {'success': False, 'message': "I/O error: {}".format(e), 'uid': uid}
+        except ET.ParseError as e:
+            logger.error("XML parse error in save_preference: {}".format(e))
+            return {'success': False, 'message': "XML parse error: {}".format(e), 'uid': uid}
         except Exception as e:
             logger.error("Failed to save preference: {}".format(e))
             logger.error(traceback.format_exc())
@@ -1198,6 +1204,10 @@ class GPPrefsWorker:
 
                 result[ptype] = preferences
 
+            except (OSError, IOError, PermissionError) as e:
+                logger.error("I/O error reading {} preferences: {}".format(ptype, e))
+            except (ET.ParseError, ValueError) as e:
+                logger.error("Parse error reading {} preferences: {}".format(ptype, e))
             except Exception as e:
                 logger.error("Failed to read {} preferences: {}".format(ptype, e))
 
@@ -1359,6 +1369,12 @@ class GPPrefsWorker:
                 logger.debug("Preference with UID {} not found in {}".format(uid, xml_path))
                 return False
 
+        except (OSError, IOError, PermissionError) as e:
+            logger.error("I/O error deleting preference: {}".format(e))
+            return False
+        except (ET.ParseError, ValueError) as e:
+            logger.error("Parse error deleting preference: {}".format(e))
+            return False
         except Exception as e:
             logger.error("Failed to delete preference: {}".format(e))
             logger.error(traceback.format_exc())

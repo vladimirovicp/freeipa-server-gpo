@@ -289,6 +289,9 @@ class GPUIService(dbus.service.Object):
         try:
             result = self.data_store.save_preference(name_gpt, target, pref_type, value, uid)
             return json.dumps(result, default=str, ensure_ascii=False)
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Data error in save_preference: {e}")
+            return json.dumps({'success': False, 'message': str(e), 'uid': uid}, ensure_ascii=False)
         except Exception as e:
             logger.exception(f"Unexpected error in save_preference: {e}")
             return json.dumps({'success': False, 'message': str(e), 'uid': uid}, ensure_ascii=False)
@@ -313,6 +316,9 @@ class GPUIService(dbus.service.Object):
             return json.dumps(result, default=str, ensure_ascii=False)
         except (OSError, IOError) as e:
             logger.error(f"I/O error getting preferences: {e}")
+            return json.dumps({}, ensure_ascii=False)
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Data error in get_preferences: {e}")
             return json.dumps({}, ensure_ascii=False)
         except Exception as e:
             logger.exception(f"Unexpected error in get_preferences: {e}")

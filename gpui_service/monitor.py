@@ -22,7 +22,7 @@ DirectoryMonitor - Monitor directory for ADMX file changes and reload data
 from pathlib import Path
 from typing import Any, Callable, Optional
 
-from gi.repository import Gio
+from gi.repository import Gio, GLib
 import logging
 
 try:
@@ -98,8 +98,10 @@ class DirectoryMonitor:
             self.monitor = file.monitor_directory(Gio.FileMonitorFlags.NONE, None)
             self.monitor.connect('changed', self.on_file_changed)
             logger.info(f"Started monitoring directory: {self.monitored_path}")
+        except (OSError, GLib.Error) as e:
+            logger.error(f"Failed to setup directory monitor: {e}")
         except Exception as e:
-            logger.exception(f"Failed to setup directory monitor: {e}")
+            logger.exception(f"Unexpected error setting up directory monitor: {e}")
 
     def stop_monitoring(self) -> None:
         """Stop monitoring"""

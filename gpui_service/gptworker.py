@@ -237,8 +237,11 @@ class GPTWorker:
         except PermissionError as exp:
             logger.error(f"Permission denied writing to {pol_file_path}: {exp}")
             return False
-        except OSError as exp:
+        except (OSError, IOError) as exp:
             logger.error(f"I/O error writing registry.pol to {pol_file_path}: {exp}")
+            return False
+        except (ValueError, RuntimeError) as exp:
+            logger.error(f"Data error creating registry.pol file at {pol_file_path}: {exp}")
             return False
         except Exception as exp:
             logger.exception(f"Unexpected error creating registry.pol file at {pol_file_path}: {exp}")
@@ -296,8 +299,11 @@ class GPTWorker:
         except PermissionError as exp:
             logger.error(f"Permission denied reading {pol_file_path}: {exp}")
             return {}
-        except OSError as exp:
+        except (OSError, IOError) as exp:
             logger.error(f"I/O error reading registry.pol from {pol_file_path}: {exp}")
+            return {}
+        except (ValueError, RuntimeError) as exp:
+            logger.error(f"Data error reading registry.pol from {pol_file_path}: {exp}")
             return {}
         except Exception as exp:
             logger.exception(f"Unexpected error reading registry.pol file at {pol_file_path}: {exp}")
@@ -346,6 +352,9 @@ class GPTWorker:
 
         except (OSError, IOError) as exp:
             logger.error(f"I/O error updating policy in {pol_file_path}: {exp}")
+            return False
+        except (ValueError, RuntimeError) as exp:
+            logger.error(f"Data error updating policy in {pol_file_path}: {exp}")
             return False
         except Exception as exp:
             logger.exception(f"Unexpected error updating policy value in {pol_file_path}: {exp}")
@@ -430,8 +439,11 @@ class GPTWorker:
         except PermissionError as exp:
             logger.error(f"Permission denied deleting from {pol_file_path}: {exp}")
             return False
-        except OSError as exp:
+        except (OSError, IOError) as exp:
             logger.error(f"I/O error deleting policy from {pol_file_path}: {exp}")
+            return False
+        except (ValueError, RuntimeError) as exp:
+            logger.error(f"Data error deleting policy from {pol_file_path}: {exp}")
             return False
         except Exception as exp:
             logger.exception(f"Unexpected error deleting policy value from {pol_file_path}: {exp}")
