@@ -522,6 +522,8 @@ class GPODataStore:
             success = self.gpt_worker.update_policy_value(
                 resolved_name_gpt, key_path, value_name, value_data, value_type, policy_type
             )
+            if success:
+                self._update_gpo_version(resolved_name_gpt, policy_type)
             return success
         except (OSError, IOError) as exp:
             logger.error(f"I/O error writing policy to {resolved_name_gpt}: {exp}")
@@ -752,7 +754,7 @@ class GPODataStore:
             resolved = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
             result = self.gpprefs_worker.save_preference(resolved, target, pref_type, value, uid)
             if result.get('success'):
-                self._update_gpo_version({'gpo_guid': resolved})
+                self._update_gpo_version(resolved, target or 'Machine')
             return result
         except json.JSONDecodeError as exp:
             logger.error(f"Invalid JSON in preference value: {exp}")
@@ -825,8 +827,7 @@ class GPODataStore:
             resolved_gpo_guid = utils.resolve_gpo_path(gpo_guid, self.sysvol_path)
             success = self.gpprefs_worker.delete_preference(resolved_gpo_guid, scope, pref_type, uid)
             if success:
-                # TODO: Update GPO version in LDAP and GPT.INI
-                pass
+                self._update_gpo_version(resolved_gpo_guid, scope)
             return success
         except (OSError, IOError) as exp:
             logger.error(f"I/O error deleting preference from {gpo_guid}: {exp}")
@@ -839,17 +840,21 @@ class GPODataStore:
             return False
 
 
-    def _update_gpo_version(self, json_data):
+    def _update_gpo_version(self, gpo_path, scope='Machine'):
         """
-        Update GPO version in LDAP and GPT.INI
+        Update GPO version in GPT.INI after policy change.
 
         Args:
-            json_data: JSON data containing gpo_guid
+            gpo_path: Resolved GPO path (relative to sysvol)
+            scope: 'Machine' or 'User'
         """
-        # TODO: Implement version update
-        # 1. Increment versionNumber in LDAP
-        # 2. Update GPT.INI Version field
-        logger.warning("GPO version update not implemented yet")
+        if self.gpt_worker is None:
+            logger.warning("GPTWorker not available, cannot update GPT.INI version")
+            return
+        try:
+            self.gpt_worker.increment_gpo_version(gpo_path, scope)
+        except Exception as exp:
+            logger.warning(f"Failed to update GPO version: {exp}")
 
 
 def list_of_dicts_to_dict(items, key_attr):

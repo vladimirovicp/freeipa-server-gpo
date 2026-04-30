@@ -604,3 +604,111 @@ class GPTWorker:
             # Unknown type, return as is
             logger.warning(f"Unknown registry type {reg_type}, returning raw data")
             return entry_data
+
+    def _get_gpt_ini_path(self, gpo_path):
+        """
+        Get path to GPT.INI file for a GPO.
+
+        Args:
+            gpo_path: Relative path to GPO within sysvol
+
+        Returns:
+            Path object to GPT.INI
+        """
+        gpo_full_path = self.sysvol_path / gpo_path
+        utils.validate_path_in_sysvol(str(gpo_full_path), str(self.sysvol_path))
+        return gpo_full_path / 'GPT.INI'
+
+    def _parse_gpt_ini(self, gpt_ini_path):
+        """
+        Parse GPT.INI file.
+
+        Args:
+            gpt_ini_path: Path to GPT.INI
+
+        Returns:
+            dict with parsed key-value pairs from [General] section
+        """
+        result = {}
+        in_general = False
+        try:
+            with open(gpt_ini_path, 'r', encoding='utf-8-sig') as f:
+                for line in f:
+                    line = line.strip()
+                    if line == '[General]':
+                        in_general = True
+                        continue
+                    if line.startswith('[') and line.endswith(']'):
+                        in_general = False
+                        continue
+                    if in_general and '=' in line:
+                        key, _, val = line.partition('=')
+                        result[key.strip()] = val.strip()
+        except FileNotFoundError:
+            logger.debug(f"GPT.INI not found: {gpt_ini_path}")
+        return result
+
+    def _write_gpt_ini(self, gpt_ini_path, ini_data):
+        """
+        Write GPT.INI file from dict.
+
+        Args:
+            gpt_ini_path: Path to GPT.INI
+            ini_data: dict with key-value pairs for [General] section
+        """
+        lines = ['[General]\n']
+        for key, value in ini_data.items():
+            lines.append('{}={}\n'.format(key, value))
+        gpt_ini_path.write_text(''.join(lines), encoding='utf-8')
+
+    def increment_gpo_version(self, gpo_path, scope='Machine'):
+        """
+        Increment GPO version in GPT.INI.
+
+        The Version field encodes both User and Machine versions:
+        Version = (UserVersion << 16) | MachineVersion
+
+        Args:
+            gpo_path: Relative path to GPO within sysvol
+            scope: 'Machine' or 'User' — which version to increment
+
+        Returns:
+            True if successful, False otherwise
+        """
+        try:
+            gpt_ini_path = self._get_gpt_ini_path(gpo_path)
+            ini_data = self._parse_gpt_ini(gpt_ini_path)
+
+            version_str = ini_data.get('Version', '0')
+            try:
+                version = int(version_str)
+            except ValueError:
+                version = 0
+
+            machine_version = version & 0xFFFF
+            user_version = (version >> 16) & 0xFFFF
+
+            if scope == 'User':
+                user_version += 1
+            else:
+                machine_version += 1
+
+            new_version = (user_version << 16) | machine_version
+            ini_data['Version'] = str(new_version)
+
+            if 'displayName' not in ini_data:
+                ini_data['displayName'] = 'New Group Policy Object'
+            if 'flags' not in ini_data:
+                ini_data['flags'] = '0'
+
+            self._write_gpt_ini(gpt_ini_path, ini_data)
+            logger.info("GPT.INI version updated to {} (User={}, Machine={})".format(
+                new_version, user_version, machine_version))
+            return True
+
+        except (OSError, IOError) as e:
+            logger.error("Failed to update GPT.INI version: {}".format(e))
+            return False
+        except Exception as e:
+            logger.error("Unexpected error updating GPT.INI: {}".format(e))
+            return False
