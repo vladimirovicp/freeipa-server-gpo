@@ -795,12 +795,11 @@ class GPPrefsWorker:
             return base64.b64encode(encrypted).decode('ascii')
 
         except ImportError:
-            logger.error("PyCryptodome not available. Password encryption disabled.")
-            # Return empty string or raise error
-            return ""
+            logger.warning("PyCryptodome not available. Password cannot be encrypted.")
+            return None
         except Exception as e:
-            logger.error("Failed to encrypt password: {}".format(e))
-            return ""
+            logger.warning("Failed to encrypt password: {}".format(e))
+            return None
 
     def _bool_to_int(self, value):
         """

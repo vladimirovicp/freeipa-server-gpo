@@ -349,7 +349,10 @@ class GPODataStore:
             return self._set_unlocked(path, value, name_gpt, target, metadata)
 
     def _set_unlocked(self, path, value, name_gpt, target=None, metadata=None):
-        logger.info(f"set called: path={repr(path)}, value={repr(value)}, name_gpt={repr(name_gpt)}, target={repr(target)}, metadata={repr(metadata)}")
+        val_repr = repr(value)
+        if len(val_repr) > 100:
+            val_repr = val_repr[:100] + '...'
+        logger.info(f"set called: path={repr(path)}, value={val_repr}, name_gpt={repr(name_gpt)}, target={repr(target)}, metadata={repr(metadata)}")
         if self.gpt_worker is None:
             logger.error("GPTWorker not available, cannot write .pol file")
             return False

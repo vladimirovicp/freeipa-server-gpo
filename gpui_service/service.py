@@ -176,7 +176,8 @@ class GPUIService(dbus.service.Object):
         Returns:
             True if successful, False otherwise
         """
-        logger.info(f"set method called with path: {path}, name_gpt: {name_gpt}, target: {target}, value: {value}, metadata: {metadata}")
+        val_log = value if len(str(value)) <= 100 else str(value)[:100] + '...'
+        logger.info(f"set method called with path: {path}, name_gpt: {name_gpt}, target: {target}, value: {val_log}, metadata: {metadata}")
         # Convert empty target to None (use defaults)
         target_param = target if target else None
         return self.data_store.set(path, value, name_gpt, target_param, metadata)
