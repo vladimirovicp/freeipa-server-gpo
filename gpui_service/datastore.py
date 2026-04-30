@@ -254,12 +254,13 @@ class GPODataStore:
             directory_path: Path to directory containing ADMX files.
             locale: Locale for ADML parsing. If None, uses current locale.
         """
-        if locale is None:
-            locale = self.locale
-        self.monitor_path = directory_path
-        self.locale = self.normalize_locale(locale)
-        logger.info(f"Loading ADMX data from {directory_path} with locale {self.locale}")
-        self.data = AdmxParser.build_result_for_dir(directory_path, self.locale)
+        with self.lock:
+            if locale is None:
+                locale = self.locale
+            self.monitor_path = directory_path
+            self.locale = self.normalize_locale(locale)
+            logger.info(f"Loading ADMX data from {directory_path} with locale {self.locale}")
+            self.data = AdmxParser.build_result_for_dir(directory_path, self.locale)
 
     def set_locale(self, locale: str) -> bool:
         """
@@ -271,25 +272,23 @@ class GPODataStore:
         Returns:
             True if successful, False otherwise.
         """
-        normalized = self.normalize_locale(locale)
+        with self.lock:
+            normalized = self.normalize_locale(locale)
 
-        if normalized == self.locale and self.data:
-            logger.info(f"Locale already set to {normalized}")
-            return True
+            if normalized == self.locale and self.data:
+                logger.info(f"Locale already set to {normalized}")
+                return True
 
-        # Clear cache before reloading
-        AdmxParser.clear_cache()
+            AdmxParser.clear_cache()
 
-        # Update GSettings
-        gsettings_set_locale(normalized)
+            gsettings_set_locale(normalized)
 
-        # Reload data if monitor_path is set
-        if self.monitor_path:
-            self.load_from_directory(self.monitor_path, normalized)
-            logger.info(f"Locale changed to {normalized}, data reloaded")
-        else:
-            self.locale = normalized
-            logger.info(f"Locale set to {normalized}, will be used on next load")
+            if self.monitor_path:
+                self.load_from_directory(self.monitor_path, normalized)
+                logger.info(f"Locale changed to {normalized}, data reloaded")
+            else:
+                self.locale = normalized
+                logger.info(f"Locale set to {normalized}, will be used on next load")
 
         return True
 
@@ -344,6 +343,10 @@ class GPODataStore:
         Returns:
             True if successful, False otherwise
         """
+        with self.lock:
+            return self._set_unlocked(path, value, name_gpt, target, metadata)
+
+    def _set_unlocked(self, path, value, name_gpt, target=None, metadata=None):
         logger.info(f"set called: path={repr(path)}, value={repr(value)}, name_gpt={repr(name_gpt)}, target={repr(target)}, metadata={repr(metadata)}")
         if self.gpt_worker is None:
             logger.error("GPTWorker not available, cannot write .pol file")
@@ -598,6 +601,10 @@ class GPODataStore:
         Returns:
             Tuple (value_data, value_type) if found, None otherwise
         """
+        with self.lock:
+            return self._get_current_value_unlocked(path, name_gpt, target)
+
+    def _get_current_value_unlocked(self, path, name_gpt, target=None):
         if self.gpt_worker is None:
             logger.error("GPTWorker not available, cannot read .pol file")
             return None
@@ -718,6 +725,10 @@ class GPODataStore:
         Returns:
             dict with results: {'success': bool, 'message': str, 'uid': str}
         """
+        with self.lock:
+            return self._save_preference_unlocked(name_gpt, target, pref_type, value, uid)
+
+    def _save_preference_unlocked(self, name_gpt, target, pref_type, value, uid=''):
         if self.gpprefs_worker is None:
             logger.error("GPPrefsWorker not available")
             return {'success': False, 'message': 'GPPrefsWorker not available', 'uid': uid}
@@ -754,6 +765,10 @@ class GPODataStore:
         Returns:
             dict with preferences grouped by type
         """
+        with self.lock:
+            return self._get_preferences_unlocked(gpo_guid, scope, pref_type)
+
+    def _get_preferences_unlocked(self, gpo_guid, scope, pref_type=None):
         if self.gpprefs_worker is None:
             logger.error("GPPrefsWorker not available")
             return {}
@@ -781,6 +796,10 @@ class GPODataStore:
         Returns:
             True if deleted, False otherwise
         """
+        with self.lock:
+            return self._delete_preference_unlocked(gpo_guid, scope, pref_type, uid)
+
+    def _delete_preference_unlocked(self, gpo_guid, scope, pref_type, uid):
         if self.gpprefs_worker is None:
             logger.error("GPPrefsWorker not available")
             return False
