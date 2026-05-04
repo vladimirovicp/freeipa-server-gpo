@@ -826,3 +826,216 @@ class gpo_get_current_value(Command):
         except Exception as e:
             logger.exception("Unexpected error in gpo_get_current_value")
             raise
+
+
+@register()
+class gpo_save_preference(Command):
+    __doc__ = _("Save a Group Policy Preference item.")
+
+    takes_args = (
+        Str('name_gpt',
+            cli_name='name_gpt',
+            label=_('GPO name'),
+            doc=_('GPO path (relative to sysvol)'),
+        ),
+        Str('target',
+            cli_name='target',
+            label=_('Target'),
+            doc=_('Policy type (Machine or User)'),
+        ),
+        Str('pref_type',
+            cli_name='pref_type',
+            label=_('Preference type'),
+            doc=_('Preference type (Files, Folders, Shortcuts, Environment, IniFiles, Drives, Printers, Services, ScheduledTasks, NetworkShares)'),
+        ),
+        Str('value',
+            cli_name='value',
+            label=_('Value'),
+            doc=_('JSON string with type-specific properties'),
+        ),
+        Str('uid?',
+            cli_name='uid',
+            label=_('UID'),
+            doc=_('UID of existing preference to update (empty for new)'),
+        ),
+    )
+
+    has_output = (
+        output.summary,
+        output.Output('result', type=dict, doc=_('Operation result')),
+    )
+
+    def execute(self, name_gpt, target, pref_type, value, uid=None, **options):
+        """
+        Save a Group Policy Preference item.
+        """
+        try:
+            logger.debug(
+                'gpo_save_preference called with name_gpt: %s, target: %s, '
+                'pref_type: %s, uid: %s',
+                name_gpt, target, pref_type, uid
+            )
+
+            if uid is None:
+                uid = ""
+
+            result_json = self.api.Object.gpo._call_gpuiservice_method(
+                'save_preference', name_gpt, target, pref_type, value, uid
+            )
+
+            if result_json:
+                raw_result = json.loads(str(result_json))
+            else:
+                raw_result = {'success': False, 'message': 'Empty response', 'uid': uid}
+
+            logger.debug('gpo_save_preference returning result: %s', raw_result)
+
+            if raw_result.get('success'):
+                summary = 'Preference saved: {} {} (uid: {})'.format(
+                    pref_type, name_gpt, raw_result.get('uid', uid)
+                )
+            else:
+                summary = 'Failed to save preference: {}'.format(
+                    raw_result.get('message', 'Unknown error')
+                )
+
+            return {
+                'summary': summary,
+                'result': raw_result,
+            }
+
+        except Exception as e:
+            logger.exception("Unexpected error in gpo_save_preference")
+            raise
+
+
+@register()
+class gpo_get_preferences(Command):
+    __doc__ = _("Read Group Policy Preferences from GPO.")
+
+    takes_args = (
+        Str('name_gpt',
+            cli_name='name_gpt',
+            label=_('GPO name'),
+            doc=_('GPO path (relative to sysvol)'),
+        ),
+        Str('target',
+            cli_name='target',
+            label=_('Target'),
+            doc=_('Policy type (Machine or User)'),
+        ),
+        Str('pref_type?',
+            cli_name='pref_type',
+            label=_('Preference type'),
+            doc=_('Preference type to read (empty for all types)'),
+        ),
+    )
+
+    has_output = (
+        output.summary,
+        output.Output('result', type=dict, doc=_('Preferences data')),
+    )
+
+    def execute(self, name_gpt, target, pref_type=None, **options):
+        """
+        Read Group Policy Preferences from GPO.
+        """
+        try:
+            logger.debug(
+                'gpo_get_preferences called with name_gpt: %s, target: %s, pref_type: %s',
+                name_gpt, target, pref_type
+            )
+
+            if pref_type is None:
+                pref_type = ""
+
+            result_json = self.api.Object.gpo._call_gpuiservice_method(
+                'get_preferences', name_gpt, target, pref_type
+            )
+
+            if result_json:
+                raw_result = json.loads(str(result_json))
+            else:
+                raw_result = {}
+
+            logger.debug('gpo_get_preferences returning result for %s', name_gpt)
+
+            count = sum(len(v) for v in raw_result.values() if isinstance(v, list))
+            summary = 'Found {} preference(s) in GPO {} {}'.format(
+                count, name_gpt, target
+            )
+
+            return {
+                'summary': summary,
+                'result': raw_result,
+            }
+
+        except Exception as e:
+            logger.exception("Unexpected error in gpo_get_preferences")
+            raise
+
+
+@register()
+class gpo_delete_preference(Command):
+    __doc__ = _("Delete a Group Policy Preference item by UID.")
+
+    takes_args = (
+        Str('name_gpt',
+            cli_name='name_gpt',
+            label=_('GPO name'),
+            doc=_('GPO path (relative to sysvol)'),
+        ),
+        Str('target',
+            cli_name='target',
+            label=_('Target'),
+            doc=_('Policy type (Machine or User)'),
+        ),
+        Str('pref_type',
+            cli_name='pref_type',
+            label=_('Preference type'),
+            doc=_('Preference type (Files, Folders, etc.)'),
+        ),
+        Str('uid',
+            cli_name='uid',
+            label=_('UID'),
+            doc=_('UID of the preference to delete'),
+        ),
+    )
+
+    has_output = (
+        output.summary,
+        output.Output('success', type=bool, doc=_('Operation success')),
+    )
+
+    def execute(self, name_gpt, target, pref_type, uid, **options):
+        """
+        Delete a Group Policy Preference item by UID.
+        """
+        try:
+            logger.debug(
+                'gpo_delete_preference called with name_gpt: %s, target: %s, '
+                'pref_type: %s, uid: %s',
+                name_gpt, target, pref_type, uid
+            )
+
+            success = self.api.Object.gpo._call_gpuiservice_method(
+                'delete_preference', name_gpt, target, pref_type, uid
+            )
+
+            logger.debug('gpo_delete_preference returning success: %s', success)
+            if success:
+                summary = 'Preference deleted: {} {} (uid: {})'.format(
+                    pref_type, name_gpt, uid
+                )
+            else:
+                summary = 'Failed to delete preference: {} {} (uid: {})'.format(
+                    pref_type, name_gpt, uid
+                )
+            return {
+                'summary': summary,
+                'success': bool(success),
+            }
+
+        except Exception as e:
+            logger.exception("Unexpected error in gpo_delete_preference")
+            raise
