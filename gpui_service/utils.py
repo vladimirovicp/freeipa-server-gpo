@@ -32,6 +32,9 @@ def resolve_gpo_path(path: str | None, sysvol_path: str) -> str:
         Resolved relative path within sysvol.
     """
     if isinstance(path, str):
+        if path.startswith('\\') and not path.startswith('\\\\'):
+            path = '\\' + path
+
         if path.startswith('\\\\'):
             parts = path.split('\\')
             local_parts = parts[4:]
