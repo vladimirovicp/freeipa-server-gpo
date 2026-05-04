@@ -115,3 +115,57 @@ if _base_get_current_value is not None:
                 if summary:
                     textui.print_summary(summary)
             return 0
+
+
+# ---------------------------------------------------------------------------
+# gpo_get_preferences
+# ---------------------------------------------------------------------------
+
+_base_get_preferences = _get_base_class('gpo_get_preferences')
+if _base_get_preferences is not None:
+    @register(override=True, no_fail=True)
+    class gpo_get_preferences(_base_get_preferences):
+        def output_for_cli(self, textui, output, *args, **options):
+            """
+            Print preferences JSON without ornament.
+            """
+            summary = output.get('summary', '')
+            if summary:
+                textui.print_plain(summary)
+            return 0
+
+
+# ---------------------------------------------------------------------------
+# gpo_save_preference
+# ---------------------------------------------------------------------------
+
+_base_save_preference = _get_base_class('gpo_save_preference')
+if _base_save_preference is not None:
+    @register(override=True, no_fail=True)
+    class gpo_save_preference(_base_save_preference):
+        def output_for_cli(self, textui, output, *args, **options):
+            """
+            Print save result JSON without ornament.
+            """
+            summary = output.get('summary', '')
+            if summary:
+                textui.print_plain(summary)
+            return 0
+
+
+# ---------------------------------------------------------------------------
+# gpo_delete_preference
+# ---------------------------------------------------------------------------
+
+_base_delete_preference = _get_base_class('gpo_delete_preference')
+if _base_delete_preference is not None:
+    @register(override=True, no_fail=True)
+    class gpo_delete_preference(_base_delete_preference):
+        def output_for_cli(self, textui, output, *args, **options):
+            """
+            Print delete result: success or failure.
+            """
+            summary = output.get('summary', '')
+            if summary:
+                textui.print_summary(summary)
+            return 0
