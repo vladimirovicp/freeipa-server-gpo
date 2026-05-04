@@ -890,14 +890,7 @@ class gpo_save_preference(Command):
 
             logger.debug('gpo_save_preference returning result: %s', raw_result)
 
-            if raw_result.get('success'):
-                summary = 'Preference saved: {} {} (uid: {})'.format(
-                    pref_type, name_gpt, raw_result.get('uid', uid)
-                )
-            else:
-                summary = 'Failed to save preference: {}'.format(
-                    raw_result.get('message', 'Unknown error')
-                )
+            summary = json.dumps(raw_result, ensure_ascii=False)
 
             return {
                 'summary': summary,
@@ -960,10 +953,7 @@ class gpo_get_preferences(Command):
 
             logger.debug('gpo_get_preferences returning result for %s', name_gpt)
 
-            count = sum(len(v) for v in raw_result.values() if isinstance(v, list))
-            summary = 'Found {} preference(s) in GPO {} {}'.format(
-                count, name_gpt, target
-            )
+            summary = json.dumps(raw_result, ensure_ascii=False)
 
             return {
                 'summary': summary,
