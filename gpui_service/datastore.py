@@ -31,16 +31,16 @@ try:
     from .parse_admx_structure import AdmxParser
     from . import utils
     from .config import set_locale as gsettings_set_locale
-    from .config import DEFAULT_SYSVOL_PATH, DEFAULT_MONITOR_PATH
+    from .config import DEFAULT_SYSVOL_PATH, DEFAULT_MONITOR_PATH, SUPPORTED_LOCALES
 except ImportError:
     from parse_admx_structure import AdmxParser
     import utils
     from config import set_locale as gsettings_set_locale
-    from config import DEFAULT_SYSVOL_PATH, DEFAULT_MONITOR_PATH
+    from config import DEFAULT_SYSVOL_PATH, DEFAULT_MONITOR_PATH, SUPPORTED_LOCALES
 
 logger = logging.getLogger('gpuiservice')
 
-SUPPORTED_LOCALES = {'ru-RU', 'en-US'}
+
 
 class GPODataStore:
     """Storage for ADMX policy data loaded from directory"""

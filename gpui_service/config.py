@@ -32,7 +32,7 @@ logger = logging.getLogger('gpuiservice')
 DEFAULT_MONITOR_PATH = '/usr/share/PolicyDefinitions'
 DEFAULT_SYSVOL_PATH = '/var/lib/freeipa/sysvol'
 GSETTINGS_SCHEMA = 'org.altlinux.gpuiservice'
-SUPPORTED_LOCALES = ['ru-RU', 'en-US']
+SUPPORTED_LOCALES = {'ru-RU', 'en-US'}
 
 
 def get_gsettings() -> Optional[Gio.Settings]:
