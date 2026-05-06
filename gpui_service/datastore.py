@@ -523,7 +523,8 @@ class GPODataStore:
                 resolved_name_gpt, key_path, value_name, value_data, value_type, policy_type
             )
             if success:
-                self._update_gpo_version(resolved_name_gpt, policy_type)
+                if not self._update_gpo_version(resolved_name_gpt, policy_type):
+                    logger.warning("Policy set but GPT.INI version update failed for %s", resolved_name_gpt)
             return success
         except (OSError, IOError) as exp:
             logger.error(f"I/O error writing policy to {resolved_name_gpt}: {exp}")
@@ -817,7 +818,8 @@ class GPODataStore:
             resolved = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
             result = self.gpprefs_worker.save_preference(resolved, target, pref_type, value, uid)
             if result.get('success'):
-                self._update_gpo_version(resolved, target or 'Machine')
+                if not self._update_gpo_version(resolved, target or 'Machine'):
+                    result['message'] += ' (WARNING: GPT.INI version not updated)'
             return result
         except json.JSONDecodeError as exp:
             logger.error(f"Invalid JSON in preference value: {exp}")
@@ -890,7 +892,8 @@ class GPODataStore:
             resolved_gpo_guid = utils.resolve_gpo_path(gpo_guid, self.sysvol_path)
             success = self.gpprefs_worker.delete_preference(resolved_gpo_guid, scope, pref_type, uid)
             if success:
-                self._update_gpo_version(resolved_gpo_guid, scope)
+                if not self._update_gpo_version(resolved_gpo_guid, scope):
+                    logger.warning("Preference deleted but GPT.INI version update failed for %s", resolved_gpo_guid)
             return success
         except (OSError, IOError) as exp:
             logger.error(f"I/O error deleting preference from {gpo_guid}: {exp}")
@@ -910,14 +913,19 @@ class GPODataStore:
         Args:
             gpo_path: Resolved GPO path (relative to sysvol)
             scope: 'Machine' or 'User'
+
+        Returns:
+            True if version was updated successfully, False otherwise.
         """
         if self.gpt_worker is None:
             logger.warning("GPTWorker not available, cannot update GPT.INI version")
-            return
+            return False
         try:
             self.gpt_worker.increment_gpo_version(gpo_path, scope)
+            return True
         except Exception as exp:
-            logger.warning(f"Failed to update GPO version: {exp}")
+            logger.warning("Failed to update GPO version: %s", exp)
+            return False
 
 
 def list_of_dicts_to_dict(items, key_attr):
