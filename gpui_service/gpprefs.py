@@ -217,6 +217,24 @@ class GPPrefsWorker:
         self.sysvol_path = Path(sysvol_path)
         logger.debug("GPPrefsWorker initialized with sysvol path: {}".format(sysvol_path))
 
+    def _atomic_write(self, path_obj, content):
+        """
+        Write content to file atomically via temp file + os.replace.
+
+        Args:
+            path_obj: Path object to write to
+            content: String content to write
+        """
+        path_obj.parent.mkdir(parents=True, exist_ok=True)
+        tmp_path = path_obj.parent / ('.tmp_{}_{}'.format(os.getpid(), path_obj.name))
+        try:
+            tmp_path.write_text(content, encoding='utf-8')
+            os.replace(str(tmp_path), str(path_obj))
+        except Exception:
+            if tmp_path.exists():
+                os.unlink(str(tmp_path))
+            raise
+
     def _get_preferences_path(self, gpo_guid, scope):
         """
         Get path to Preferences directory for a GPO
@@ -1002,13 +1020,12 @@ class GPPrefsWorker:
             pref.update(common_attrs)
 
             xml_path = self._get_xml_file_path(gpo_guid, scope, pref_type)
-            xml_path.parent.mkdir(parents=True, exist_ok=True)
 
             collection = self._read_or_create_collection(xml_path, pref_type)
             self._update_collection(collection, pref)
 
             xml_content = self._pretty_xml(collection)
-            xml_path.write_text(xml_content, encoding='utf-8')
+            self._atomic_write(xml_path, xml_content)
 
             logger.info("Saved {} preference {} to {}".format(pref_type, pref_uid, xml_path))
 
@@ -1295,7 +1312,7 @@ class GPPrefsWorker:
                     logger.info("Deleted empty XML file: {}".format(xml_path))
                 else:
                     xml_content = self._pretty_xml(root)
-                    xml_path.write_text(xml_content, encoding='utf-8')
+                    self._atomic_write(xml_path, xml_content)
                     logger.info("Deleted preference {} from {}".format(uid, xml_path))
                 return True
             else:
