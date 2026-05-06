@@ -743,7 +743,7 @@ class GPODataStore:
             self._search_node(self.data, '', pattern, search_type, results)
             return results
 
-    def _search_node(self, node, current_path, pattern, search_type, results):
+    def _search_node(self, node, current_path, pattern, search_type, results, depth=0):
         """
         Recursively search ADMX data tree.
 
@@ -753,7 +753,10 @@ class GPODataStore:
             pattern: Lowercase search pattern
             search_type: Type of search
             results: Accumulating results list
+            depth: Current recursion depth (max 100)
         """
+        if depth > 100:
+            return
         if isinstance(node, dict):
             display_name = node.get('displayName', '')
             cat_name = node.get('category', '')
@@ -779,14 +782,14 @@ class GPODataStore:
                 if key in ('header', 'metadata'):
                     continue
                 child_path = '{}/{}'.format(current_path, key) if current_path else key
-                self._search_node(value, child_path, pattern, search_type, results)
+                self._search_node(value, child_path, pattern, search_type, results, depth + 1)
 
         elif isinstance(node, list):
             for item in node:
                 if isinstance(item, dict):
                     cat_name = item.get('category', '')
                     child_path = '{}/{}'.format(current_path, cat_name) if current_path else cat_name
-                    self._search_node(item, child_path, pattern, search_type, results)
+                    self._search_node(item, child_path, pattern, search_type, results, depth + 1)
 
     def save_preference(self, name_gpt, target, pref_type, value, uid=''):
         """
