@@ -1,16 +1,16 @@
 #!/usr/bin/env python3
 """
 Test runner script for gpui_service.
-Ensures Python 3.6+ compatibility and runs tests.
+Ensures Python 3.9+ compatibility and runs tests.
 """
 import sys
 import subprocess
 import os
 
 def check_python_version():
-    """Check if Python version is at least 3.6."""
-    if sys.version_info < (3, 6):
-        print(f"ERROR: Python 3.6+ required, but running {sys.version}")
+    """Check if Python version is at least 3.9."""
+    if sys.version_info < (3, 9):
+        print(f"ERROR: Python 3.9+ required, but running {sys.version}")
         print("Use 'python3' instead of 'python' if available.")
         return False
     return True
