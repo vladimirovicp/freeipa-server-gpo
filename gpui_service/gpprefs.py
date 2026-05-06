@@ -727,26 +727,6 @@ class GPPrefsWorker:
             except (ValueError, TypeError):
                 raise ValueError("disabled must be an integer between 0 and 255")
 
-    def _ensure_uid(self, pref):
-        """
-        Ensure preference has a valid UID
-
-        Args:
-            pref: preference dict
-
-        Returns:
-            preference dict with ensured UID
-        """
-        if 'uid' not in pref or not pref['uid']:
-            pref['uid'] = '{' + str(uuid.uuid4()).upper() + '}'
-        else:
-            # Validate GUID format
-            uid = pref['uid']
-            guid_pattern = r'^\{?[A-F0-9]{8}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{4}-[A-F0-9]{12}\}?$'
-            if not re.match(guid_pattern, uid, re.IGNORECASE):
-                raise ValueError("Invalid UID format: {}".format(uid))
-        return pref
-
     def _ensure_changed(self, pref):
         """
         Ensure preference has a changed timestamp
