@@ -227,20 +227,27 @@ class GPUIService(dbus.service.Object):
             JSON string with value_data and value_type if found, empty string otherwise
         """
         logger.info(f"get_current_value method called with name_gpt: {name_gpt}, target: {target}, path: {path}")
-        # Convert empty target to None (use defaults)
-        target_param = target if target else None
+        try:
+            # Convert empty target to None (use defaults)
+            target_param = target if target else None
 
-        result = self.data_store.get_current_value(path, name_gpt, target_param)
-        if result is None:
+            result = self.data_store.get_current_value(path, name_gpt, target_param)
+            if result is None:
+                return ""
+
+            # result is tuple (value_data, value_type)
+            value_data, value_type = result
+            response = {
+                "value_data": value_data,
+                "value_type": value_type
+            }
+            return json.dumps(response, default=str, ensure_ascii=False)
+        except (OSError, IOError) as e:
+            logger.error("I/O error in get_current_value: %s", e)
             return ""
-
-        # result is tuple (value_data, value_type)
-        value_data, value_type = result
-        response = {
-            "value_data": value_data,
-            "value_type": value_type
-        }
-        return json.dumps(response, default=str, ensure_ascii=False)
+        except Exception as e:
+            logger.exception("Unexpected error in get_current_value: %s", e)
+            return ""
 
     @dbus.service.method('org.altlinux.GPUIService', out_signature='b')
     def reload(self):
