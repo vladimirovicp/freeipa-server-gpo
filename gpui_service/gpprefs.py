@@ -1110,10 +1110,17 @@ class GPPrefsWorker:
         Returns:
             Pretty-printed XML string
         """
+        if hasattr(ET, 'indent'):
+            ET.indent(element, space='  ')
+            rough = ET.tostring(element, encoding='unicode')
+            return '<?xml version="1.0" encoding="utf-8"?>\n' + rough
         rough_string = ET.tostring(element, encoding='unicode')
         parsed = minidom.parseString(rough_string)
-        pretty = parsed.toprettyxml(indent='  ', encoding=None)
-        return pretty.replace('<?xml version="1.0" ?>', '<?xml version="1.0" encoding="utf-8"?>', 1)
+        pretty = parsed.toprettyxml(indent='  ')
+        # minidom inserts its own declaration; replace it with proper encoding
+        lines = pretty.split('\n')
+        body = '\n'.join(line for line in lines if not line.strip().startswith('<?xml'))
+        return '<?xml version="1.0" encoding="utf-8"?>\n' + body.strip()
 
     def read_preferences(self, gpo_guid, scope, pref_type=None):
         """
