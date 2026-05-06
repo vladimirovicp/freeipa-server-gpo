@@ -22,6 +22,7 @@ gpuiservice - API service for webGPUI to manage GPT directory contents
 try:
     from .config import get_monitor_path, get_sysvol_path, get_gsettings
     from .datastore import GPODataStore
+    from .admxnavigator import ADMXNavigator
     from .monitor import DirectoryMonitor
     from .service import GPUIService
     from .daemon import ServiceDaemon
@@ -31,6 +32,7 @@ try:
 except ImportError:
     from config import get_monitor_path, get_sysvol_path, get_gsettings
     from datastore import GPODataStore
+    from admxnavigator import ADMXNavigator
     from monitor import DirectoryMonitor
     from service import GPUIService
     from daemon import ServiceDaemon
@@ -43,6 +45,7 @@ __all__ = [
     'get_sysvol_path',
     'get_gsettings',
     'GPODataStore',
+    'ADMXNavigator',
     'DirectoryMonitor',
     'GPUIService',
     'ServiceDaemon',
