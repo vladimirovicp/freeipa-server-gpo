@@ -361,6 +361,26 @@ class GPPrefsWorker:
         elif pref_type == 'NetworkShares':
             self._validate_network_shares_properties(properties)
 
+    def _validate_bool(self, properties, prop_names):
+        """
+        Validate boolean properties accept True/False or 'true'/'false'/'0'/'1'.
+
+        Args:
+            properties: dict of property name → value
+            prop_names: list of property names to validate
+
+        Raises:
+            ValueError: if any property has invalid boolean value
+        """
+        for prop in prop_names:
+            val = properties.get(prop)
+            if val is not None:
+                if isinstance(val, str):
+                    if val.lower() not in ('true', 'false', '0', '1'):
+                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
+                elif not isinstance(val, bool):
+                    raise ValueError("{} must be boolean".format(prop))
+
     def _validate_registry_properties(self, properties):
         """Validate Registry properties"""
         # Validate hive
@@ -380,15 +400,7 @@ class GPPrefsWorker:
             raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
 
         # Validate boolean properties
-        bool_props = ['default', 'displayDecimal', 'disabled']
-        for prop in bool_props:
-            val = properties.get(prop)
-            if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
-                elif not isinstance(val, bool):
-                    raise ValueError("{} must be boolean".format(prop))
+        self._validate_bool(properties, ['default', 'displayDecimal', 'disabled'])
 
         # Validate numeric properties (xs:unsignedByte)
         # Note: 'value' is a registry value string and must NOT be validated as a numeric byte
@@ -433,15 +445,7 @@ class GPPrefsWorker:
         if target_path and not target_path.strip():
             raise ValueError("targetPath cannot be empty")
         # Validate boolean properties
-        bool_props = ['readOnly', 'archive', 'hidden', 'suppress', 'disabled']
-        for prop in bool_props:
-            val = properties.get(prop)
-            if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
-                elif not isinstance(val, bool):
-                    raise ValueError("{} must be boolean".format(prop))
+        self._validate_bool(properties, ['readOnly', 'archive', 'hidden', 'suppress', 'disabled'])
 
     def _validate_environment_properties(self, properties):
         """Validate Environment properties"""
@@ -459,15 +463,7 @@ class GPPrefsWorker:
             raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
 
         # Validate boolean properties
-        bool_props = ['user', 'partial', 'disabled']
-        for prop in bool_props:
-            val = properties.get(prop)
-            if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
-                elif not isinstance(val, bool):
-                    raise ValueError("{} must be boolean".format(prop))
+        self._validate_bool(properties, ['user', 'partial', 'disabled'])
 
 
     def _validate_folders_properties(self, properties):
@@ -483,15 +479,7 @@ class GPPrefsWorker:
             raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
 
         # Validate required boolean properties (readOnly, archive, hidden)
-        bool_props = ['readOnly', 'archive', 'hidden', 'disabled']
-        for prop in bool_props:
-            val = properties.get(prop)
-            if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
-                elif not isinstance(val, bool):
-                    raise ValueError("{} must be boolean".format(prop))
+        self._validate_bool(properties, ['readOnly', 'archive', 'hidden', 'disabled'])
 
         # Validate delete* properties (xs:unsignedByte)
         delete_props = ['deleteSubFolders', 'deleteFiles', 'deleteFolder', 'deleteReadOnly', 'deleteIgnoreErrors']
@@ -534,13 +522,7 @@ class GPPrefsWorker:
                 raise ValueError("shortcutKey must be an integer between 0 and 255")
 
         # Validate boolean property 'disabled' (xs:boolean)
-        disabled = properties.get('disabled')
-        if disabled is not None:
-            if isinstance(disabled, str):
-                if disabled.lower() not in ['true', 'false', '0', '1']:
-                    raise ValueError("disabled must be boolean or 'true'/'false'")
-            elif not isinstance(disabled, bool):
-                raise ValueError("disabled must be boolean")
+        self._validate_bool(properties, ['disabled'])
 
     def _validate_network_shares_properties(self, properties):
         """Validate NetworkShares properties"""
@@ -556,15 +538,7 @@ class GPPrefsWorker:
             raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
 
         # Validate boolean properties (xs:boolean)
-        bool_props = ['allRegular', 'allHidden', 'allAdminDrive', 'disabled']
-        for prop in bool_props:
-            val = properties.get(prop)
-            if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
-                elif not isinstance(val, bool):
-                    raise ValueError("{} must be boolean".format(prop))
+        self._validate_bool(properties, ['allRegular', 'allHidden', 'allAdminDrive', 'disabled'])
 
         # Validate userLimit as xs:unsignedByte (0-255) if present
         user_limit = properties.get('userLimit')
@@ -600,15 +574,7 @@ class GPPrefsWorker:
             raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
 
         # Validate boolean properties (xs:boolean)
-        bool_props = ['default', 'skipLocal', 'deleteAll', 'persistent', 'deleteMaps', 'disabled']
-        for prop in bool_props:
-            val = properties.get(prop)
-            if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
-                elif not isinstance(val, bool):
-                    raise ValueError("{} must be boolean".format(prop))
+        self._validate_bool(properties, ['default', 'skipLocal', 'deleteAll', 'persistent', 'deleteMaps', 'disabled'])
 
     def _validate_scheduled_tasks_properties(self, properties):
         """Validate ScheduledTasks properties"""
@@ -624,15 +590,9 @@ class GPPrefsWorker:
             raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
 
         # Validate boolean properties (xs:boolean)
-        bool_props = ['enabled', 'deleteWhenDone', 'startOnlyIfIdle', 'stopOnIdleEnd', 'noStartIfOnBatteries', 'stopIfGoingOnBatteries', 'systemRequired', 'disabled']
-        for prop in bool_props:
-            val = properties.get(prop)
-            if val is not None:
-                if isinstance(val, str):
-                    if val.lower() not in ['true', 'false', '0', '1']:
-                        raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
-                elif not isinstance(val, bool):
-                    raise ValueError("{} must be boolean".format(prop))
+        self._validate_bool(properties,
+            ['enabled', 'deleteWhenDone', 'startOnlyIfIdle', 'stopOnIdleEnd',
+             'noStartIfOnBatteries', 'stopIfGoingOnBatteries', 'systemRequired', 'disabled'])
 
         # Validate maxRunTime and deadlineMinutes as unsigned int (0-4294967295) if present
         unsigned_int_props = ['maxRunTime', 'deadlineMinutes']
@@ -659,13 +619,7 @@ class GPPrefsWorker:
             raise ValueError("action must be one of: {}".format(', '.join(self.VALID_ACTIONS)))
 
         # Validate boolean property 'disabled' (xs:boolean)
-        disabled = properties.get('disabled')
-        if disabled is not None:
-            if isinstance(disabled, str):
-                if disabled.lower() not in ['true', 'false', '0', '1']:
-                    raise ValueError("disabled must be boolean or 'true'/'false'")
-            elif not isinstance(disabled, bool):
-                raise ValueError("disabled must be boolean")
+        self._validate_bool(properties, ['disabled'])
 
     def _validate_drives_properties(self, properties):
         """Validate Drives properties"""
