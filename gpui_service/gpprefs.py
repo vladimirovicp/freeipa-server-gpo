@@ -760,19 +760,20 @@ class GPPrefsWorker:
 
     def _escape_path(self, value):
         """
-        Escape single backslashes to double backslashes for MS-GPPREF XML attributes.
+        Escape backslashes in paths for MS-GPPREF XML attributes.
+
+        Normalizes any run of backslashes to exactly two — handles both
+        single-backslash (C:\path) and already-escaped (C:\\path) paths.
 
         Args:
             value: string value
 
         Returns:
-            Escaped string with \\ replaced by \\\\
+            Escaped string with all paths
         """
         if not isinstance(value, str):
             return value
-        if '\\' in value and '\\\\' not in value:
-            return value.replace('\\', '\\\\')
-        return value
+        return re.sub(r'\\+', '\\\\', value)
 
     def _create_properties_element(self, pref_type, properties):
         """
