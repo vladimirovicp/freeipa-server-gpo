@@ -380,7 +380,7 @@ class GPPrefsWorker:
 
     def _validate_bool(self, properties, prop_names):
         """
-        Validate boolean properties accept True/False or 'true'/'false'/'0'/'1'.
+        Validate boolean properties accept True/False or string representations.
 
         Args:
             properties: dict of property name → value
@@ -393,7 +393,7 @@ class GPPrefsWorker:
             val = properties.get(prop)
             if val is not None:
                 if isinstance(val, str):
-                    if val.lower() not in ('true', 'false', '0', '1'):
+                    if val.lower() not in ('true', 'false', '0', '1', 'yes', 'no', 'on', 'off'):
                         raise ValueError("{} must be boolean or 'true'/'false'".format(prop))
                 elif not isinstance(val, bool):
                     raise ValueError("{} must be boolean".format(prop))
