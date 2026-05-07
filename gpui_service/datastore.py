@@ -95,7 +95,13 @@ class GPODataStore:
         try:
             loc, _ = locale_module.getlocale()
             if loc:
-                return self.normalize_locale(loc)
+                normalized = loc.split('.')[0].replace('_', '-')
+                if normalized in SUPPORTED_LOCALES:
+                    return normalized
+                lang = normalized.split('-')[0].lower()
+                locale_map = {'ru': 'ru-RU', 'en': 'en-US'}
+                if lang in locale_map:
+                    return locale_map[lang]
         except Exception as e:
             logger.debug(f"Could not get system locale: {e}")
         return 'en-US'
@@ -119,14 +125,11 @@ class GPODataStore:
         if not locale_str:
             return self.get_system_locale()
 
-        # Normalize: ru_RU -> ru-RU, strip encoding
         normalized = locale_str.split('.')[0].replace('_', '-')
 
-        # Check if already supported
         if normalized in SUPPORTED_LOCALES:
             return normalized
 
-        # Try to map language code
         lang = normalized.split('-')[0].lower()
         locale_map = {
             'ru': 'ru-RU',
@@ -135,9 +138,8 @@ class GPODataStore:
         if lang in locale_map:
             return locale_map[lang]
 
-        # Fallback to system locale
-        logger.warning(f"Unsupported locale '{locale_str}', using system locale")
-        return self.get_system_locale()
+        logger.warning(f"Unsupported locale '{locale_str}', falling back to en-US")
+        return 'en-US'
 
     def load_from_directory(self, directory_path=DEFAULT_MONITOR_PATH, locale: str = None):
         """
