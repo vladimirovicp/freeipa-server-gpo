@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 
 import os
+import re
 
 
 FREEIPA_BASE_PATH = "/var/lib/freeipa"
@@ -22,6 +23,22 @@ REQUIRED_SCHEMA_CLASSES = [
     'groupPolicyChain',
     'groupPolicyMaster'
 ]
+
+GUID_PATTERN = re.compile(
+    r'^\{[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}'
+    r'-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}\}$'
+)
+
+
+def is_valid_guid(guid):
+    return bool(GUID_PATTERN.match(guid))
+
+
+def is_valid_domain(domain):
+    if not domain or '/' in domain or '\\' in domain or '..' in domain:
+        return False
+    parts = domain.split('.')
+    return len(parts) >= 2 and all(p for p in parts)
 
 def get_domain_sysvol_path(domain):
     return os.path.join(FREEIPA_SYSVOL_PATH, domain)
