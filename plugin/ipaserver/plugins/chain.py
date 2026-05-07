@@ -689,21 +689,7 @@ class chain_find(LDAPSearch):
                 chain_name = entry_attrs.get('cn', [None])
                 if chain_name and isinstance(chain_name, list):
                     chain_name = chain_name[0]
-                    is_active = chain_name in gpmaster_chains
-
-                    entry_attrs['active'] = [is_active]
-
-                    try:
-                        current_ldap_active = entry_attrs.get('active', [False])
-                        ldap_active_bool = current_ldap_active[0] if current_ldap_active else False
-                        if isinstance(ldap_active_bool, str):
-                            ldap_active_bool = ldap_active_bool.upper() == 'TRUE'
-
-                        if ldap_active_bool != is_active:
-                            chain_dn = api.Object.chain.get_dn(chain_name)
-                            self.obj.update_chain_active_status(chain_dn, is_active)
-                    except Exception:
-                        pass
+                    entry_attrs['active'] = [chain_name in gpmaster_chains]
                 else:
                     entry_attrs['active'] = [False]
 
