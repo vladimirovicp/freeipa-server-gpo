@@ -3,7 +3,10 @@
 
 import os
 import sys
-from ipa_gpo_install.config import get_policies_path, get_policy_path, get_gpt_ini_path
+from ipa_gpo_install.config import (
+    get_policies_path, get_policy_path, get_gpt_ini_path,
+    is_valid_guid, is_valid_domain
+)
 
 
 def main():
@@ -15,15 +18,23 @@ def main():
     guid = sys.argv[1]
     domain = sys.argv[2]
 
+    if not is_valid_guid(guid):
+        print("Error: Invalid GUID format: {}".format(guid), file=sys.stderr)
+        return 1
+
+    if not is_valid_domain(domain):
+        print("Error: Invalid domain: {}".format(domain), file=sys.stderr)
+        return 1
+
     policies_path = get_policies_path(domain)
     policy_path = get_policy_path(domain, guid)
 
     if not os.path.exists(policies_path):
         try:
             os.makedirs(policies_path, exist_ok=True)
-            print(f"Created policies directory: {policies_path}")
+            print("Created policies directory: {}".format(policies_path))
         except Exception as exc:
-            print(f"Error creating policies directory: {exc}", file=sys.stderr)
+            print("Error creating policies directory: {}".format(exc), file=sys.stderr)
             return 1
 
     try:
@@ -39,12 +50,12 @@ def main():
             gpt_file.write("[General]\n")
             gpt_file.write("Version=0\n")
 
-        print(f"Created GPT.INI file: {gpt_ini_path}")
+        print("Created GPT.INI file: {}".format(gpt_ini_path))
         print("GPO structure creation completed successfully")
         return 0
 
     except Exception as exc:
-        print(f"Error creating GPO structure: {exc}", file=sys.stderr)
+        print("Error creating GPO structure: {}".format(exc), file=sys.stderr)
         return 1
 
 
