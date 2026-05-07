@@ -30,6 +30,19 @@ def escape_backslashes(text):
 
 register = Registry()
 
+_bus = None
+_bus_initialized = False
+
+
+def _get_bus():
+    global _bus, _bus_initialized
+    if not _bus_initialized:
+        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
+        _bus = dbus.SystemBus()
+        _bus_initialized = True
+    return _bus
+
+
 PLUGIN_CONFIG = (
     ('container_system', DN(('cn', 'System'))),
     ('container_grouppolicy', DN(('cn', 'Policies'), ('cn', 'System'))),
@@ -204,11 +217,10 @@ class gpo(LDAPObject):
 
     def _call_dbus_method(self, method_name, guid, domain, fail_on_error=True):
         """Universal D-Bus method caller for GPO operations."""
-        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
         params = [guid, domain]
 
         try:
-            bus = dbus.SystemBus()
+            bus = _get_bus()
             obj = bus.get_object('org.freeipa.server', '/',
                                follow_name_owner_changes=True)
             server = dbus.Interface(obj, 'org.freeipa.server')
@@ -242,10 +254,8 @@ class gpo(LDAPObject):
 
     def _call_dbus_method_with_output(self, method_name, *params, fail_on_error=True):
         """D-Bus method caller that returns stdout."""
-        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-
         try:
-            bus = dbus.SystemBus()
+            bus = _get_bus()
             obj = bus.get_object('org.freeipa.server', '/',
                                follow_name_owner_changes=True)
             server = dbus.Interface(obj, 'org.freeipa.server')
@@ -282,10 +292,8 @@ class gpo(LDAPObject):
 
     def _call_gpuiservice_method(self, method_name, *params):
         """Call GPUIService DBus method."""
-        dbus.mainloop.glib.DBusGMainLoop(set_as_default=True)
-
         try:
-            bus = dbus.SystemBus()
+            bus = _get_bus()
             obj = bus.get_object('org.altlinux.gpuiservice', '/org/altlinux/gpuiservice',
                                follow_name_owner_changes=True)
             gpuiservice = dbus.Interface(obj, 'org.altlinux.GPUIService')
