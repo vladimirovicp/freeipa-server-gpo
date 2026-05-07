@@ -818,7 +818,7 @@ class ChainResolveBase(Command):
     def _groups_match(self, target_groups, chain_groups):
         for target_group in target_groups:
             for chain_group in chain_groups:
-                if target_group in chain_group:
+                if target_group == chain_group:
                     return True
         return False
 
