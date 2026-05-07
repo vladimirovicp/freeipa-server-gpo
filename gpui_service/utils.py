@@ -91,5 +91,7 @@ def validate_path_in_sysvol(resolved_path: str, sysvol_path: str) -> None:
     from pathlib import Path
     real_sysvol = Path(sysvol_path).resolve()
     real_path = Path(resolved_path).resolve()
-    if not str(real_path).startswith(str(real_sysvol)):
+    sysvol_str = str(real_sysvol)
+    path_str = str(real_path)
+    if path_str != sysvol_str and not path_str.startswith(sysvol_str + '/'):
         raise ValueError("Path traversal detected: {} escapes {}".format(resolved_path, sysvol_path))
