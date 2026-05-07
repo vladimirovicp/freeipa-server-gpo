@@ -65,8 +65,6 @@ class ServiceDaemon:
         """Handle termination signals"""
         logger.info(f"Received signal {signum}, initiating shutdown...")
         self.shutdown_event.set()
-        if self.loop:
-            self.loop.quit()
 
     def setup_dbus(self) -> bool:
         """Setup DBus connection and register service"""
