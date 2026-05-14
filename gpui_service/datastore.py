@@ -494,6 +494,58 @@ class GPODataStore:
                 # else both empty, keep defaults
 
         return adjusted_key_path, value_name
+    def delete_policy_value(self, path, name_gpt, target=None):
+        """Delete a policy value from GPO Registry.pol file
+
+        Args:
+            path: Registry key path (e.g., 'Software\\BaseALT\\Policies\\GPUpdate\\SettingName')
+            name_gpt: GPO path (relative to sysvol). Required.
+            target: Policy type ('Machine' or 'User'). If None, defaults to 'Machine'.
+
+        Returns:
+            True if deleted (or value didn't exist), False on error
+        """
+        with self.lock:
+            return self._delete_policy_value_unlocked(path, name_gpt, target)
+
+    def _delete_policy_value_unlocked(self, path, name_gpt, target=None):
+        if self.gpt_worker is None:
+            logger.error("GPTWorker not available")
+            return False
+
+        policy_type = 'Machine'
+        if target is not None:
+            policy_type = target
+
+        key_path = AdmxParser.normalize_registry_key(path)
+        value_name = ''
+        key_parts = key_path.split('\\')
+        if len(key_parts) > 1:
+            potential_value_name = key_parts[-1]
+            if potential_value_name.strip():
+                value_name = potential_value_name
+                key_path = '\\'.join(key_parts[:-1])
+
+        resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+        logger.debug(f"Calling GPTWorker.delete_policy_value: name_gpt={name_gpt}, resolved={resolved_name_gpt}, key_path={key_path}, value_name={value_name}, policy_type={policy_type}")
+        try:
+            success = self.gpt_worker.delete_policy_value(
+                resolved_name_gpt, key_path, value_name, policy_type
+            )
+            if success:
+                if not self._update_gpo_version(resolved_name_gpt, policy_type):
+                    logger.warning("Policy deleted but GPT.INI version update failed for %s", resolved_name_gpt)
+            return success
+        except (OSError, IOError) as exp:
+            logger.error(f"I/O error deleting policy from {resolved_name_gpt}: {exp}")
+            return False
+        except (ValueError, json.JSONDecodeError) as exp:
+            logger.error(f"Data error deleting policy value: {exp}")
+            return False
+        except Exception as exp:
+            logger.exception(f"Unexpected error deleting policy value: {exp}")
+            return False
+
     def get_current_value(self, path, name_gpt, target=None):
         """Get current value from GPO policy file
 

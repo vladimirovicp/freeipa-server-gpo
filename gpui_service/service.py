@@ -79,6 +79,12 @@ class GPUIService(dbus.service.Object):
                     <arg name="path" direction="in" type="s"/>
                     <arg name="results" direction="out" type="v"/>
                     </method>
+                    <method name="delete_policy_value">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="target" direction="in" type="s"/>
+                    <arg name="path" direction="in" type="s"/>
+                    <arg name="success" direction="out" type="b"/>
+                    </method>
                     <method name="reload">
                     <arg name="success" direction="out" type="b"/>
                     </method>
@@ -248,6 +254,28 @@ class GPUIService(dbus.service.Object):
         except Exception as e:
             logger.exception("Unexpected error in get_current_value: %s", e)
             return ""
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='b')
+    def delete_policy_value(self, name_gpt, target, path):
+        """
+        Delete a policy value from GPO Registry.pol file
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: Policy type ('Machine' or 'User'), empty string for default
+            path: Registry key path (e.g., 'Software\\BaseALT\\Policies\\GPUpdate\\SettingName')
+        Returns:
+            True if deleted (or value didn't exist), False on error
+        """
+        logger.info(f"delete_policy_value method called with name_gpt: {name_gpt}, target: {target}, path: {path}")
+        try:
+            target_param = target if target else None
+            return self.data_store.delete_policy_value(path, name_gpt, target_param)
+        except (OSError, IOError) as e:
+            logger.error("I/O error in delete_policy_value: %s", e)
+            return False
+        except Exception as e:
+            logger.exception("Unexpected error in delete_policy_value: %s", e)
+            return False
 
     @dbus.service.method('org.altlinux.GPUIService', out_signature='b')
     def reload(self):
