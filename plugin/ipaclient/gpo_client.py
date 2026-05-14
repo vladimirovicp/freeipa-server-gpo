@@ -118,6 +118,24 @@ if _base_get_current_value is not None:
 
 
 # ---------------------------------------------------------------------------
+# gpo_delete_policy
+# ---------------------------------------------------------------------------
+
+_base_delete_policy = _get_base_class('gpo_delete_policy')
+if _base_delete_policy is not None:
+    @register(override=True, no_fail=True)
+    class gpo_delete_policy(_base_delete_policy):
+        def output_for_cli(self, textui, output, *args, **options):
+            """
+            Print delete result: success or failure.
+            """
+            summary = output.get('summary', '')
+            if summary:
+                textui.print_summary(summary)
+            return 0
+
+
+# ---------------------------------------------------------------------------
 # gpo_get_preferences
 # ---------------------------------------------------------------------------
 

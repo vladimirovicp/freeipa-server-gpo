@@ -837,6 +837,71 @@ class gpo_get_current_value(Command):
 
 
 @register()
+class gpo_delete_policy(Command):
+    __doc__ = _("Delete a policy value from GPO Registry.pol file.")
+
+    takes_args = (
+        Str('name_gpt',
+            cli_name='name_gpt',
+            label=_('GPO name'),
+            doc=_('GPO path (relative to sysvol)'),
+        ),
+        Str('target',
+            cli_name='target',
+            label=_('Target'),
+            doc=_('Policy type (Machine or User)'),
+        ),
+        Str('path',
+            cli_name='path',
+            label=_('Policy path'),
+            doc=_('Registry key path to delete'),
+        ),
+    )
+
+    has_output = (
+        output.summary,
+        output.Output('success', type=bool, doc=_('Operation success')),
+    )
+
+    def execute(self, name_gpt, target, path, **options):
+        """
+        Delete a policy value from GPO Registry.pol file.
+        """
+        try:
+            logger.debug(
+                'gpo_delete_policy called with name_gpt: %s, target: %s, path: %s',
+                name_gpt, target, path
+            )
+
+            if isinstance(target, str) and target.startswith('target='):
+                target = target[len('target='):]
+            if isinstance(path, str) and path.startswith('path='):
+                path = path[len('path='):]
+
+            success = self.api.Object.gpo._call_gpuiservice_method(
+                'delete_policy_value', name_gpt, target, path
+            )
+
+            logger.debug('gpo_delete_policy returning success: %s', success)
+            if success:
+                summary = 'Policy deleted: {} for GPO {}, target {}'.format(
+                    escape_backslashes(path), name_gpt, target
+                )
+            else:
+                summary = 'Failed to delete policy: {} for GPO {}, target {}'.format(
+                    escape_backslashes(path), name_gpt, target
+                )
+            return {
+                'summary': summary,
+                'success': bool(success),
+            }
+
+        except Exception as e:
+            logger.exception("Unexpected error in gpo_delete_policy")
+            raise
+
+
+@register()
 class gpo_save_preference(Command):
     __doc__ = _("Save a Group Policy Preference item.")
 
