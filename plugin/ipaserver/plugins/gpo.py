@@ -885,11 +885,11 @@ class gpo_delete_policy(Command):
             logger.debug('gpo_delete_policy returning success: %s', success)
             if success:
                 summary = 'Policy deleted: {} for GPO {}, target {}'.format(
-                    escape_backslashes(path), name_gpt, target
+                    path, name_gpt, target
                 )
             else:
                 summary = 'Failed to delete policy: {} for GPO {}, target {}'.format(
-                    escape_backslashes(path), name_gpt, target
+                    path, name_gpt, target
                 )
             return {
                 'summary': summary,

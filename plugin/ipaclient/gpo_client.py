@@ -113,7 +113,7 @@ if _base_get_current_value is not None:
             else:
                 summary = output.get('summary', '')
                 if summary:
-                    textui.print_summary(summary)
+                textui.print_plain(summary)
             return 0
 
 
