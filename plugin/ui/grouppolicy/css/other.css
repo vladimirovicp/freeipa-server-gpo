@@ -1,0 +1,36 @@
+.gp__container{
+    height: 100%;
+}
+
+.modal-gpui{
+    width: 100%;
+    height: 100vh;
+}
+
+.modal-gpui .modal-dialog{
+    width: 90%;
+}
+
+.modal-gpui .modal-dialog .modal-content{
+    height: 90vh;
+}
+
+.modal-gpui .modal-dialog .modal-content .modal-body{
+    padding: 0;
+    height: calc(100% - 42px);
+}
+
+.gp__admx-radio input[type="radio"]{
+    opacity: unset;
+    position: static;
+}
+
+.gp__admx-state-policy label{
+    font-weight: 400;
+        margin: 0;
+}
+
+.gp__footer
+ {
+   gap: 10px; 
+ }
