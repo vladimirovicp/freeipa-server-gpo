@@ -50,8 +50,7 @@ make install PREFIX=%_prefix DESTDIR=%buildroot PYTHON_SITELIBDIR=%python3_sitel
 %python3_sitelibdir/ipaserver/plugins/__pycache__/gpo.*
 %python3_sitelibdir/ipaserver/plugins/__pycache__/chain.*
 %python3_sitelibdir/ipaserver/plugins/__pycache__/gpmaster.*
-%_datadir/ipa/ui/js/plugins/chain/chain.js
-%_datadir/ipa/ui/js/plugins/chain/gpo.js
+%_datadir/ipa/ui/js/plugins/chain
 %_datadir/ipa/schema.d/75-gpc.ldif
 %_datadir/ipa/schema.d/75-chain.ldif
 %_datadir/ipa/schema.d/75-gpmaster.ldif
