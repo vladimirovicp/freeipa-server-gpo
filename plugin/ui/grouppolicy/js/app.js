@@ -486,50 +486,6 @@ define([
         };
     }
 
-        var containerId = options && options.containerId ? options.containerId : 'gp__container';
-        return document.getElementById(containerId);
-    }
-
-    function init(options) {
-        var container = resolveContainer(options || {});
-
-        if (!container) {
-            return null;
-        }
-
-        container.innerHTML = '';
-
-        if (APIModule && APIModule.initNameGpt) {
-            APIModule.initNameGpt((options || {}).policyName);
-        }
-
-        initShortcutsStorage();
-
-        var treeViewState = createTreeViewState();
-        var header = renderHeader(container);
-        treeViewState.setHeader(header);
-        treeViewState.initHelpControls();
-
-        var renderedMain = renderMain(container, treeViewState);
-        renderFooter(container);
-
-        resizable(
-            renderedMain.divider.getElement(),
-            renderedMain.treeView.getElement(),
-            renderedMain.main.getElement()
-        );
-
-        return {
-            container: container,
-            treeViewState: treeViewState,
-            header: header,
-            main: renderedMain.main,
-            treeView: renderedMain.treeView,
-            divider: renderedMain.divider,
-            workspace: renderedMain.workspace
-        };
-    }
-
     return {
         init: init
     };
