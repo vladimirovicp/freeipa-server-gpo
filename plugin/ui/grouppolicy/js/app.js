@@ -18,6 +18,7 @@ define([
     './components/tree-view/tree-view-list',
     './util/element-creator',
     './util/mainLocalStorage/shortcuts',
+    './locales/translations',
     './util/API'
 ], function(
     headerModule,
@@ -39,6 +40,7 @@ define([
     treeViewListModule,
     elementCreatorModule,
     shortcutsStorageModule,
+    translationsModule,
     APIModule
 ) {
     var renderHeader = headerModule.renderHeader;
@@ -426,6 +428,63 @@ define([
         if (options && options.container instanceof Element) {
             return options.container;
         }
+
+        var containerId = options && options.containerId ? options.containerId : 'gp__container';
+        return document.getElementById(containerId);
+    }
+
+    function mapBrowserToServiceLocale(browserLang) {
+        var lang = (browserLang || 'en').slice(0, 2).toLowerCase();
+        if (lang === 'ru') {
+            return 'ru-RU';
+        }
+        return 'en-US';
+    }
+
+    function init(options) {
+        var container = resolveContainer(options || {});
+
+        if (!container) {
+            return null;
+        }
+
+        container.innerHTML = '';
+
+        var policyName = (options || {}).policyName;
+
+        APIModule.initNameGpt(policyName).then(function() {
+            var browserLang = (navigator.language || 'en').slice(0, 2).toLowerCase();
+            var targetLocale = mapBrowserToServiceLocale(browserLang);
+
+            translationsModule.setLanguage(browserLang);
+
+            return APIModule.getLocale().then(function(serviceLocale) {
+                if (serviceLocale !== targetLocale) {
+                    return APIModule.setLocale(targetLocale);
+                }
+            });
+        }).then(function() {
+            initShortcutsStorage();
+
+            var treeViewState = createTreeViewState();
+            var header = renderHeader(container);
+            treeViewState.setHeader(header);
+            treeViewState.initHelpControls();
+
+            var renderedMain = renderMain(container, treeViewState);
+            renderFooter(container);
+
+            resizable(
+                renderedMain.divider.getElement(),
+                renderedMain.treeView.getElement(),
+                renderedMain.main.getElement()
+            );
+        });
+
+        return {
+            container: container
+        };
+    }
 
         var containerId = options && options.containerId ? options.containerId : 'gp__container';
         return document.getElementById(containerId);
