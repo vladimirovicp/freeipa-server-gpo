@@ -5,13 +5,13 @@ var { treepreferences } = __dep1;
 var { convertPolicySection } = __dep2;
 
 
-function buildTreeViewList(policyData = {}) {
+function buildTreeViewList(policyData = {}, policyName = '') {
     const machineCategories = convertPolicySection(policyData.Machine, 'Machine');
     const userCategories = convertPolicySection(policyData.User, 'User');
 
     return [
         {
-            title: t('policies.localGroupPolicy'),
+            title: policyName || t('policies.localGroupPolicy'),
             type: 'folder',
             opened: true,
             icon: null,
@@ -121,8 +121,9 @@ async function loadTreeViewList() {
     var nameGpt = await API.waitForNameGpt();
 
     var policyData = await API.getPolicy('/');
+    var policyName = API.getPolicyName() || '';
 
-    return buildTreeViewList(policyData);
+    return buildTreeViewList(policyData, policyName);
 }
     return { loadTreeViewList };
 });
