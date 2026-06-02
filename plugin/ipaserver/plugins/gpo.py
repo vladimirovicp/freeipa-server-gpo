@@ -1102,3 +1102,58 @@ class gpo_delete_preference(Command):
         except Exception as e:
             logger.exception("Unexpected error in gpo_delete_preference")
             raise
+
+
+@register()
+class gpo_get_locale(Command):
+    __doc__ = _("Get current locale of GPUIService.")
+
+    takes_args = ()
+
+    has_output = (
+        output.summary,
+        output.Output('result', type=str, doc=_('Current locale')),
+    )
+
+    def execute(self, **options):
+        try:
+            locale = self.api.Object.gpo._call_gpuiservice_method('get_locale')
+            logger.debug('gpo_get_locale returning: %s', locale)
+            return {
+                'summary': 'Current locale: {}'.format(locale),
+                'result': str(locale),
+            }
+        except Exception as e:
+            logger.exception("Unexpected error in gpo_get_locale")
+            raise
+
+
+@register()
+class gpo_set_locale(Command):
+    __doc__ = _("Set locale for GPUIService and reload ADMX data.")
+
+    takes_args = (
+        Str('locale',
+            cli_name='locale',
+            label=_('Locale'),
+            doc=_('Locale string (e.g. en-US, ru-RU)'),
+        ),
+    )
+
+    has_output = (
+        output.summary,
+        output.Output('result', type=bool, doc=_('Success')),
+    )
+
+    def execute(self, locale, **options):
+        try:
+            logger.debug('gpo_set_locale called with locale: %s', locale)
+            success = self.api.Object.gpo._call_gpuiservice_method('set_locale', locale)
+            logger.debug('gpo_set_locale result: %s', success)
+            return {
+                'summary': 'Locale set to: {}'.format(locale),
+                'result': bool(success),
+            }
+        except Exception as e:
+            logger.exception("Unexpected error in gpo_set_locale")
+            raise
