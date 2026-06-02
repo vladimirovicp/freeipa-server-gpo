@@ -19,13 +19,22 @@
   display: flex;
   gap: 20px;
 }
-.gp__control-help {
+.gp__control-actions {
   margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.gp__control-help {
 }
 .gp__control-admx {
-  padding: 0 16px;
   display: flex;
   gap: 20px;
+}
+.gp__control-separator {
+  width: 1px;
+  height: 24px;
+  background-color: #d1d1d1;
 }
 .gp__default-template {
   height: 100%;

@@ -14,24 +14,32 @@ function renderHeader(container) {
                 className: 'gp__nav'
             }),
             createElement('div', {
-                className: 'gp__control-admx',
+                className: 'gp__control-actions',
                 children: [
-                    createElement('button', {
-                        className: ['button', 'admx__btn-apply'],
-                        text: t('header.apply')
+                    createElement('div', {
+                        className: 'gp__control-admx',
+                        children: [
+                            createElement('button', {
+                                className: ['button', 'admx__btn-apply'],
+                                text: t('header.apply')
+                            }),
+                            createElement('button', {
+                                className: ['button', 'admx__btn-cancel'],
+                                text: t('header.cancel')
+                            })
+                        ]
                     }),
-                    createElement('button', {
-                        className: ['button', 'admx__btn-cancel'],
-                        text: t('header.cancel')
-                    })
-                ]
-            }),
-            createElement('div', {
-                className: 'gp__control-help',
-                children: [
-                    createElement('button', {
-                        className: ['button', 'btn-information'],
-                        text: t('header.information')
+                    createElement('div', {
+                        className: 'gp__control-separator'
+                    }),
+                    createElement('div', {
+                        className: 'gp__control-help',
+                        children: [
+                            createElement('button', {
+                                className: ['button', 'btn-information'],
+                                text: t('header.information')
+                            })
+                        ]
                     })
                 ]
             })
