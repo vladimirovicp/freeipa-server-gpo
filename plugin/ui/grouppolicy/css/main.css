@@ -1,29 +1,45 @@
 @charset "UTF-8";
 .gp__container {
-  min-width: 1200px;
+  min-width: 0;
+  height: 100%;
+  overflow: hidden;
 }
 .gp__main {
   width: 100%;
   height: calc(100% - 64px - 48px);
   display: flex;
+  overflow: hidden;
+}
+.gp__header-left {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  overflow: hidden;
 }
 .gp__search {
   width: 408px;
+  flex-shrink: 1;
+  min-width: 200px;
 }
 .gp__nav {
   padding: 0 5px;
   width: 206px;
+  flex-shrink: 1;
+  min-width: 100px;
 }
 .gp__control {
   padding: 0 16px;
-  display: flex;
+  display: none;
   gap: 20px;
+  flex-shrink: 0;
 }
 .gp__control-actions {
   margin-left: auto;
-  display: flex;
+  display: none;
   align-items: center;
   gap: 16px;
+  flex-shrink: 0;
+  white-space: nowrap;
 }
 .gp__control-help {
 }
