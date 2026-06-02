@@ -55,6 +55,7 @@ class GPODataStore:
         self.monitor_path = None
         self.gpt_worker = None
         self.gpprefs_worker = None
+        self.policy_state_manager = None
         try:
             try:
                 from .gptworker import GPTWorker
@@ -76,6 +77,38 @@ class GPODataStore:
         except ImportError as exp:
             logger.warning(f"GPPrefsWorker not available: {exp}")
             logger.warning("Group Policy Preferences operations will be limited")
+
+        try:
+            try:
+                from .policystate import PolicyStateManager
+            except ImportError:
+                from policystate import PolicyStateManager
+            self.policy_state_manager = PolicyStateManager(self.gpt_worker, self)
+            logger.debug("PolicyStateManager initialized")
+        except ImportError as exp:
+            logger.warning(f"PolicyStateManager not available: {exp}")
+
+        self.scripts_worker = None
+        try:
+            try:
+                from .scriptsworker import ScriptsWorker
+            except ImportError:
+                from scriptsworker import ScriptsWorker
+            self.scripts_worker = ScriptsWorker(sysvol_path)
+            logger.debug("ScriptsWorker initialized")
+        except ImportError as exp:
+            logger.warning(f"ScriptsWorker not available: {exp}")
+
+        self.comments_worker = None
+        try:
+            try:
+                from .commentsworker import CommentsWorker
+            except ImportError:
+                from commentsworker import CommentsWorker
+            self.comments_worker = CommentsWorker(sysvol_path)
+            logger.debug("CommentsWorker initialized")
+        except ImportError as exp:
+            logger.warning(f"CommentsWorker not available: {exp}")
 
     @property
     def data(self):
@@ -545,6 +578,166 @@ class GPODataStore:
         except Exception as exp:
             logger.exception(f"Unexpected error deleting policy value: {exp}")
             return False
+
+    def get_policy_state(self, policy_path, name_gpt, target=None):
+        """Determine current policy state from Registry.pol + ADMX metadata.
+
+        Args:
+            policy_path: Path to policy in ADMX tree (e.g., 'Machine/categories/.../PolicyName')
+            name_gpt: GPO path (relative to sysvol). Required.
+            target: 'Machine' or 'User'. If None, defaults to 'Machine'.
+
+        Returns:
+            dict with 'state' and 'values' keys, or None on error
+        """
+        with self.lock:
+            if self.policy_state_manager is None:
+                logger.error("PolicyStateManager not available")
+                return None
+
+            policy_type = target or 'Machine'
+            policy_metadata = self.get(policy_path)
+            if not policy_metadata or not isinstance(policy_metadata, dict):
+                logger.error(f"Policy not found at path: {policy_path}")
+                return None
+
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            return self.policy_state_manager.determine_state(
+                resolved_name_gpt, policy_type, policy_metadata
+            )
+
+    def set_policy_state(self, policy_path, name_gpt, state, target=None):
+        """Atomically set policy state.
+
+        Args:
+            policy_path: Path to policy in ADMX tree
+            name_gpt: GPO path (relative to sysvol). Required.
+            state: 'enabled', 'disabled', or 'not_configured'
+            target: 'Machine' or 'User'. If None, defaults to 'Machine'.
+
+        Returns:
+            True if successful, False otherwise
+        """
+        with self.lock:
+            if self.policy_state_manager is None:
+                logger.error("PolicyStateManager not available")
+                return False
+
+            policy_type = target or 'Machine'
+            policy_metadata = self.get(policy_path)
+            if not policy_metadata or not isinstance(policy_metadata, dict):
+                logger.error(f"Policy not found at path: {policy_path}")
+                return False
+
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            success = self.policy_state_manager.set_state(
+                resolved_name_gpt, policy_type, policy_metadata, state
+            )
+            if success:
+                self._update_gpo_version(resolved_name_gpt, policy_type)
+            return success
+
+    def get_scripts(self, name_gpt, target, script_type):
+        """Read scripts from a GPO.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            script_type: 'scripts' or 'psscripts'
+
+        Returns:
+            dict {section: [{cmdLine, parameters}, ...]}
+        """
+        with self.lock:
+            if self.scripts_worker is None:
+                logger.error("ScriptsWorker not available")
+                return {}
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            return self.scripts_worker.read_scripts(resolved_name_gpt, target, script_type)
+
+    def set_scripts(self, name_gpt, target, script_type, scripts_data):
+        """Write scripts to a GPO.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            script_type: 'scripts' or 'psscripts'
+            scripts_data: dict {section: [{cmdLine, parameters}, ...]}
+
+        Returns:
+            True if successful, False otherwise
+        """
+        with self.lock:
+            if self.scripts_worker is None:
+                logger.error("ScriptsWorker not available")
+                return False
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            success = self.scripts_worker.write_scripts(
+                resolved_name_gpt, target, script_type, scripts_data
+            )
+            if success:
+                self._update_gpo_version(resolved_name_gpt, target)
+            return success
+
+    def get_comments(self, name_gpt, target, locale=''):
+        """Read comments from a GPO.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            locale: Locale for CMTL lookup
+
+        Returns:
+            dict {policy_name: comment_text}
+        """
+        with self.lock:
+            if self.comments_worker is None:
+                logger.error("CommentsWorker not available")
+                return {}
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            return self.comments_worker.read_comments(resolved_name_gpt, target, locale)
+
+    def save_comment(self, name_gpt, target, policy_ref, comment_text, namespace=''):
+        """Add or update a comment.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            policy_ref: Policy identifier
+            comment_text: Comment text
+            namespace: ADMX target namespace (optional)
+
+        Returns:
+            True if successful
+        """
+        with self.lock:
+            if self.comments_worker is None:
+                logger.error("CommentsWorker not available")
+                return False
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            return self.comments_worker.save_comment(
+                resolved_name_gpt, target, policy_ref, comment_text, namespace
+            )
+
+    def delete_comment(self, name_gpt, target, policy_ref):
+        """Delete a comment.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            policy_ref: Policy name or 'ns:PolicyName'
+
+        Returns:
+            True if successful
+        """
+        with self.lock:
+            if self.comments_worker is None:
+                logger.error("CommentsWorker not available")
+                return False
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            return self.comments_worker.delete_comment(
+                resolved_name_gpt, target, policy_ref
+            )
 
     def get_current_value(self, path, name_gpt, target=None):
         """Get current value from GPO policy file

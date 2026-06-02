@@ -121,6 +121,52 @@ class GPUIService(dbus.service.Object):
                     <method name="get_locale">
                     <arg name="locale" direction="out" type="s"/>
                     </method>
+                    <method name="get_policy_state">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="target" direction="in" type="s"/>
+                    <arg name="policy_path" direction="in" type="s"/>
+                    <arg name="result" direction="out" type="v"/>
+                    </method>
+                    <method name="set_policy_state">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="target" direction="in" type="s"/>
+                    <arg name="policy_path" direction="in" type="s"/>
+                    <arg name="state" direction="in" type="s"/>
+                    <arg name="success" direction="out" type="b"/>
+                    </method>
+                    <method name="get_scripts">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="target" direction="in" type="s"/>
+                    <arg name="script_type" direction="in" type="s"/>
+                    <arg name="result" direction="out" type="v"/>
+                    </method>
+                    <method name="set_scripts">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="target" direction="in" type="s"/>
+                    <arg name="script_type" direction="in" type="s"/>
+                    <arg name="scripts_json" direction="in" type="s"/>
+                    <arg name="success" direction="out" type="b"/>
+                    </method>
+                    <method name="get_comments">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="target" direction="in" type="s"/>
+                    <arg name="locale" direction="in" type="s"/>
+                    <arg name="result" direction="out" type="v"/>
+                    </method>
+                    <method name="save_comment">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="target" direction="in" type="s"/>
+                    <arg name="policy_ref" direction="in" type="s"/>
+                    <arg name="comment_text" direction="in" type="s"/>
+                    <arg name="namespace" direction="in" type="s"/>
+                    <arg name="success" direction="out" type="b"/>
+                    </method>
+                    <method name="delete_comment">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="target" direction="in" type="s"/>
+                    <arg name="policy_ref" direction="in" type="s"/>
+                    <arg name="success" direction="out" type="b"/>
+                    </method>
                     <signal name="locale_changed">
                     <arg name="locale" type="s"/>
                     </signal>
@@ -456,6 +502,162 @@ class GPUIService(dbus.service.Object):
             Current locale string (e.g., 'ru-RU', 'en-US')
         """
         return self.data_store.locale
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='v')
+    def get_policy_state(self, name_gpt, target, policy_path):
+        """
+        Determine current policy state from Registry.pol + ADMX metadata.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            policy_path: Path to policy in ADMX tree
+
+        Returns:
+            JSON with state and values
+        """
+        logger.info(f"get_policy_state called: name_gpt={name_gpt}, target={target}, path={policy_path}")
+        try:
+            target_param = target if target else None
+            result = self.data_store.get_policy_state(policy_path, name_gpt, target_param)
+            if result is None:
+                return ""
+            return json.dumps(result, default=str, ensure_ascii=False)
+        except Exception as e:
+            logger.exception(f"Error in get_policy_state: {e}")
+            return ""
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='ssss', out_signature='b')
+    def set_policy_state(self, name_gpt, target, policy_path, state):
+        """
+        Atomically set policy state.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            policy_path: Path to policy in ADMX tree
+            state: 'enabled', 'disabled', or 'not_configured'
+
+        Returns:
+            True if successful, False otherwise
+        """
+        logger.info(f"set_policy_state called: name_gpt={name_gpt}, target={target}, path={policy_path}, state={state}")
+        try:
+            target_param = target if target else None
+            return self.data_store.set_policy_state(policy_path, name_gpt, state, target_param)
+        except Exception as e:
+            logger.exception(f"Error in set_policy_state: {e}")
+            return False
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='v')
+    def get_scripts(self, name_gpt, target, script_type):
+        """
+        Get scripts for a GPO.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            script_type: 'scripts' or 'psscripts'
+
+        Returns:
+            JSON {section: [{cmdLine, parameters}, ...]}
+        """
+        logger.info(f"get_scripts called: name_gpt={name_gpt}, target={target}, type={script_type}")
+        try:
+            result = self.data_store.get_scripts(name_gpt, target, script_type)
+            return json.dumps(result, default=str, ensure_ascii=False)
+        except Exception as e:
+            logger.exception(f"Error in get_scripts: {e}")
+            return "{}"
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='ssss', out_signature='b')
+    def set_scripts(self, name_gpt, target, script_type, scripts_json):
+        """
+        Write scripts for a GPO.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            script_type: 'scripts' or 'psscripts'
+            scripts_json: JSON {section: [{cmdLine, parameters}, ...]}
+
+        Returns:
+            True if successful
+        """
+        logger.info(f"set_scripts called: name_gpt={name_gpt}, target={target}, type={script_type}")
+        try:
+            scripts_data = json.loads(scripts_json)
+            return self.data_store.set_scripts(name_gpt, target, script_type, scripts_data)
+        except (json.JSONDecodeError, ValueError) as e:
+            logger.error(f"Invalid JSON in set_scripts: {e}")
+            return False
+        except Exception as e:
+            logger.exception(f"Error in set_scripts: {e}")
+            return False
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='v')
+    def get_comments(self, name_gpt, target, locale):
+        """
+        Get comments for a GPO.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            locale: Locale for CMTL lookup
+
+        Returns:
+            JSON {policy_name: comment_text}
+        """
+        logger.info(f"get_comments called: name_gpt={name_gpt}, target={target}, locale={locale}")
+        try:
+            result = self.data_store.get_comments(name_gpt, target, locale)
+            return json.dumps(result, default=str, ensure_ascii=False)
+        except Exception as e:
+            logger.exception(f"Error in get_comments: {e}")
+            return "{}"
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='sssss', out_signature='b')
+    def save_comment(self, name_gpt, target, policy_ref, comment_text, namespace):
+        """
+        Add or update a comment.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            policy_ref: Policy identifier
+            comment_text: Comment text
+            namespace: ADMX target namespace (empty for default)
+
+        Returns:
+            True if successful
+        """
+        logger.info(f"save_comment called: name_gpt={name_gpt}, target={target}, policy_ref={policy_ref}")
+        try:
+            ns = namespace if namespace else ''
+            return self.data_store.save_comment(name_gpt, target, policy_ref, comment_text, ns)
+        except Exception as e:
+            logger.exception(f"Error in save_comment: {e}")
+            return False
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='b')
+    def delete_comment(self, name_gpt, target, policy_ref):
+        """
+        Delete a comment.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            policy_ref: Policy name or 'ns:PolicyName'
+
+        Returns:
+            True if successful
+        """
+        logger.info(f"delete_comment called: name_gpt={name_gpt}, target={target}, policy_ref={policy_ref}")
+        try:
+            return self.data_store.delete_comment(name_gpt, target, policy_ref)
+        except Exception as e:
+            logger.exception(f"Error in delete_comment: {e}")
+            return False
 
     @dbus.service.signal('org.altlinux.GPUIService')
     def locale_changed(self, locale):
