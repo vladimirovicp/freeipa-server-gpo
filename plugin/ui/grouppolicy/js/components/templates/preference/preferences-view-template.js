@@ -16,8 +16,8 @@ function addManagedEventListener(cleanups, target, eventName, handler, options) 
     cleanups.push(() => target.removeEventListener(eventName, handler, options));
 }
 
-function clearHeaderButtonState({ btnCreate, btnEdit, btnDelete, btnApply, btnCancel, btnInformation } = {}) {
-    [btnCreate, btnEdit, btnDelete, btnApply, btnCancel, btnInformation]
+function clearHeaderButtonState({ btnCreate, btnEdit, btnDelete } = {}) {
+    [btnCreate, btnEdit, btnDelete]
         .filter(Boolean)
         .forEach((buttonEl) => buttonEl.classList.remove('active'));
 
@@ -27,6 +27,12 @@ function clearHeaderButtonState({ btnCreate, btnEdit, btnDelete, btnApply, btnCa
             buttonEl.removeAttribute('data-preferences-name');
             buttonEl.removeAttribute('data-preferences-index');
         });
+
+    const headerEl = btnCreate?.closest('.gp__header')
+        || btnEdit?.closest('.gp__header')
+        || btnDelete?.closest('.gp__header');
+    const controlActions = headerEl?.querySelector('.gp__control-actions');
+    if (controlActions) controlActions.style.display = '';
 }
 
 function initHeaderButtons(header) {
@@ -43,17 +49,10 @@ function initHeaderButtons(header) {
     if (btnEdit) btnEdit.classList.remove('active');
     if (btnDelete) btnDelete.classList.remove('active');
 
-    const controlAdmx = headerEl?.querySelector('.gp__control-admx');
-    const btnApply = controlAdmx?.querySelector('.admx__btn-apply');
-    const btnCancel = controlAdmx?.querySelector('.admx__btn-cancel');
-    if (btnApply) btnApply.classList.remove('active');
-    if (btnCancel) btnCancel.classList.remove('active');
+    const controlActions = headerEl?.querySelector('.gp__control-actions');
+    if (controlActions) controlActions.style.display = 'none';
 
-    const controlHelp = headerEl?.querySelector('.gp__control-help');
-    const btnInformation = controlHelp?.querySelector('.btn-information');
-    if (btnInformation) btnInformation.classList.remove('active');
-
-    return { btnCreate, btnEdit, btnDelete, btnApply, btnCancel, btnInformation };
+    return { btnCreate, btnEdit, btnDelete };
 }
 
 function initButtonHandlers({
