@@ -560,6 +560,8 @@ class AdmxParser:
     def _parse_policy_value_enabled_disabled_metadata(self, pol: ET.Element) -> dict | None:
         enabled_v = None
         disabled_v = None
+        enabled_list = []
+        disabled_list = []
 
         def _read_value(container: ET.Element) -> str | None:
             for x in container:
@@ -571,14 +573,37 @@ class AdmxParser:
                     return (x.text or "").strip()
             return None
 
+        def _read_item_list(list_element: ET.Element) -> list[dict]:
+            items = []
+            for item_el in list_element:
+                if self.strip_ns(item_el.tag) != "item":
+                    continue
+                value = None
+                value_name = None
+                key = None
+                for child in item_el:
+                    local = self.strip_ns(child.tag)
+                    if local == "value":
+                        value = _read_value(child)
+                    elif local == "valueName":
+                        value_name = (child.text or "").strip()
+                    elif local == "key":
+                        key = self.normalize_registry_key(child.text or "")
+                items.append({"value": value, "valueName": value_name, "key": key})
+            return items
+
         for ch in pol:
             local = self.strip_ns(ch.tag)
             if local == "enabledValue":
                 enabled_v = _read_value(ch)
             elif local == "disabledValue":
                 disabled_v = _read_value(ch)
+            elif local == "enabledList":
+                enabled_list = _read_item_list(ch)
+            elif local == "disabledList":
+                disabled_list = _read_item_list(ch)
 
-        if enabled_v is None and disabled_v is None:
+        if enabled_v is None and disabled_v is None and not enabled_list and not disabled_list:
             return None
 
         def _to_num_or_str(v: str | None):
@@ -592,10 +617,22 @@ class AdmxParser:
                     return v
             return v
 
+        def _normalize_item_values(items):
+            result = []
+            for item in items:
+                result.append({
+                    "value": _to_num_or_str(item["value"]),
+                    "valueName": item["valueName"],
+                    "key": item["key"],
+                })
+            return result
+
         return {
             "type": "policyValue",
             "enabledValue": _to_num_or_str(enabled_v),
             "disabledValue": _to_num_or_str(disabled_v),
+            "enabledList": _normalize_item_values(enabled_list),
+            "disabledList": _normalize_item_values(disabled_list),
         }
 
     def _parse_policy_to_flat_json(self, pol: ET.Element) -> dict:
