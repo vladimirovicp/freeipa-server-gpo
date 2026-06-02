@@ -14,6 +14,9 @@ define(["freeipa/ipa", "freeipa/rpc"], function(IPA, rpc) {
     /** @type {string|null} Кэшированный файловый путь GPO (например: \\example.test\SysVol\...\Policies\{GUID}) */
     var _nameGpt = null;
 
+    /** @type {string|null} Кэшированное имя политики (displayName) */
+    var _policyName = null;
+
     /** @type {Promise|null} Промис загрузки nameGpt. Позволяет нескольким компонентам ждать один и тот же запрос. */
     var _nameGptPromise = null;
 
@@ -72,6 +75,8 @@ define(["freeipa/ipa", "freeipa/rpc"], function(IPA, rpc) {
      * @returns {Promise<string|null>} — промис, который resolve'ится с путем GPO или null
      */
     function initNameGpt(policyName) {
+        _policyName = policyName || null;
+
         if (!policyName) {
             _nameGptPromise = Promise.resolve(null);
             return _nameGptPromise;
@@ -294,10 +299,15 @@ define(["freeipa/ipa", "freeipa/rpc"], function(IPA, rpc) {
         });
     }
 
+    function getPolicyName() {
+        return _policyName;
+    }
+
     return {
         initNameGpt: initNameGpt,
         waitForNameGpt: waitForNameGpt,
         getNameGpt: getNameGpt,
+        getPolicyName: getPolicyName,
         getPolicy: getPolicy,
         get_current_value: get_current_value,
         set: set,
