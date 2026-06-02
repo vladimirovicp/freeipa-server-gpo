@@ -14,23 +14,6 @@ function renderHeader(container) {
                 className: 'gp__nav'
             }),
             createElement('div', {
-                className: 'gp__control',
-                children: [
-                    createElement('button', {
-                        className: ['button', 'preferences__btn-create'],
-                        text: t('header.create')
-                    }),
-                    createElement('button', {
-                        className: ['button', 'preferences__btn-edit'],
-                        text: t('header.edit')
-                    }),
-                    createElement('button', {
-                        className: ['button','preferences__btn-delete'],
-                        text: t('header.delete')
-                    })
-                ]
-            }),
-            createElement('div', {
                 className: 'gp__control-admx',
                 children: [
                     createElement('button', {
