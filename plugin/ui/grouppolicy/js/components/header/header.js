@@ -8,25 +8,30 @@ function renderHeader(container) {
         className: 'gp__header',
         children: [
             createElement('div', {
-                className: 'gp__search'
-            }),
-            createElement('div', {
-                className: 'gp__nav'
-            }),
-            createElement('div', {
-                className: 'gp__control',
+                className: 'gp__header-left',
                 children: [
-                    createElement('button', {
-                        className: ['button', 'preferences__btn-create'],
-                        text: t('header.create')
+                    createElement('div', {
+                        className: 'gp__search'
                     }),
-                    createElement('button', {
-                        className: ['button', 'preferences__btn-edit'],
-                        text: t('header.edit')
+                    createElement('div', {
+                        className: 'gp__nav'
                     }),
-                    createElement('button', {
-                        className: ['button', 'preferences__btn-delete'],
-                        text: t('header.delete')
+                    createElement('div', {
+                        className: 'gp__control',
+                        children: [
+                            createElement('button', {
+                                className: ['button', 'preferences__btn-create'],
+                                text: t('header.create')
+                            }),
+                            createElement('button', {
+                                className: ['button', 'preferences__btn-edit'],
+                                text: t('header.edit')
+                            }),
+                            createElement('button', {
+                                className: ['button', 'preferences__btn-delete'],
+                                text: t('header.delete')
+                            })
+                        ]
                     })
                 ]
             }),

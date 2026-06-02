@@ -41,7 +41,7 @@ function setupAdmxTemplateController({
 } = {}) {
     const headerEl = header?.getElement?.();
     const controlActions = headerEl?.querySelector('.gp__control-actions');
-    if (controlActions) controlActions.style.display = '';
+    if (controlActions) controlActions.style.display = 'flex';
     const controlPref = headerEl?.querySelector('.gp__control');
     if (controlPref) controlPref.style.display = 'none';
     const btnApply = headerEl?.querySelector('.admx__btn-apply') ?? null;
@@ -228,7 +228,7 @@ function setupAdmxTemplateController({
 
         setHeaderAdmxButtonsActive(false);
 
-        if (controlPref) controlPref.style.display = '';
+        if (controlPref) controlPref.style.display = 'none';
     };
 
     return admxTemplate;

@@ -32,12 +32,15 @@ function clearHeaderButtonState({ btnCreate, btnEdit, btnDelete } = {}) {
         || btnEdit?.closest('.gp__header')
         || btnDelete?.closest('.gp__header');
     const controlActions = headerEl?.querySelector('.gp__control-actions');
-    if (controlActions) controlActions.style.display = '';
+    if (controlActions) controlActions.style.display = 'none';
+    const control = headerEl?.querySelector('.gp__control');
+    if (control) control.style.display = 'none';
 }
 
 function initHeaderButtons(header) {
     const headerEl = header?.getElement();
     const control = headerEl?.querySelector('.gp__control');
+    if (control) control.style.display = 'flex';
     const btnCreate = control?.querySelector('.preferences__btn-create');
     const btnEdit = control?.querySelector('.preferences__btn-edit');
     const btnDelete = control?.querySelector('.preferences__btn-delete');
