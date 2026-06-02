@@ -118,20 +118,22 @@ async function renderAdmxTemplate({ isHelpOpen = false, item = {}, admxTreePath 
                     createElement('div', {
                         className: 'gp__admx-info',
                         children: [
-                            createElement('div', {
-                                className: 'gp__admx-item',
-                                children: [
-                                    createElement('div', {
-                                        className: 'gp__admx-description',
-                                        text: t('common.description')
-                                    }),
-                                    createElement('div', {
-                                        className: 'gp__admx-options',
-                                        text: t('common.options')
-                                    })
-                                ]
-                            }),
-                            ...controlRows
+                            ...(controlRows.length > 0 ? [
+                                createElement('div', {
+                                    className: 'gp__admx-item',
+                                    children: [
+                                        createElement('div', {
+                                            className: 'gp__admx-description',
+                                            text: t('common.description')
+                                        }),
+                                        createElement('div', {
+                                            className: 'gp__admx-options',
+                                            text: t('common.options')
+                                        })
+                                    ]
+                                }),
+                                ...controlRows
+                            ] : [])
                         ]
                     })
                 ]
