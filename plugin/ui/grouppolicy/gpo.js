@@ -249,7 +249,7 @@ define([
                                 '<button type="button" class="close" aria-label="Close">' +
                                     '<span aria-hidden="true">&times;</span>' +
                                 '</button>' +
-                                '<h4 class="modal-title">GPUI | ' + policyName + '</h4>' +
+                                 '<h4 class="modal-title"></h4>' +
                             '</div>' +
                             '<div class="modal-body">' +
                                 '<div id="gp__container" class="gp__container"></div>' +
@@ -268,6 +268,8 @@ define([
             modal.find('.close').on('click', close_modal);
             //modal.find('.btn-close-modal').on('click', close_modal);
             backdrop.on('click', close_modal);
+
+            modal.find('.modal-title').text('GPUI | ' + policyName);
 
             $('body').append(backdrop).append(modal);
 

@@ -45,6 +45,7 @@ class ScriptsWorker:
             return {}
 
         ini_path = self._get_ini_path(gpo_path, scope, config['file'])
+        utils.validate_path_in_sysvol(ini_path, self.sysvol_path)
         result = {s: [] for s in config['sections']}
 
         if not os.path.exists(ini_path):
@@ -83,6 +84,7 @@ class ScriptsWorker:
             return False
 
         ini_path = self._get_ini_path(gpo_path, scope, config['file'])
+        utils.validate_path_in_sysvol(ini_path, self.sysvol_path)
 
         scripts_dir = os.path.dirname(ini_path)
         os.makedirs(scripts_dir, exist_ok=True)

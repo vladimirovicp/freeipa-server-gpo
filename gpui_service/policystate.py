@@ -51,10 +51,10 @@ class PolicyStateManager:
         if not has_any_data:
             return {'state': STATE_NOT_CONFIGURED, 'values': all_values}
 
-        if self._check_enabled(policy_metadata, all_values, base_key):
+        if self._check_enabled(name_gpt, policy_metadata, all_values, base_key):
             return {'state': STATE_ENABLED, 'values': all_values}
 
-        if self._check_disabled(policy_metadata, all_values, base_key):
+        if self._check_disabled(name_gpt, policy_metadata, all_values, base_key):
             return {'state': STATE_DISABLED, 'values': all_values}
 
         return {'state': STATE_ENABLED, 'values': all_values}
@@ -142,7 +142,7 @@ class PolicyStateManager:
 
         return values
 
-    def _check_enabled(self, policy_metadata, all_values, base_key):
+    def _check_enabled(self, name_gpt, policy_metadata, all_values, base_key):
         enabled_value = None
         enabled_list = []
 
@@ -167,7 +167,7 @@ class PolicyStateManager:
                 item_key = item.get('key') or base_key
                 item_vn = item.get('valueName', '')
                 result = self.gpt_worker.get_policy_value(
-                    self.data_store._current_gpo_path or '', item_key, item_vn,
+                    name_gpt, item_key, item_vn,
                     all_values[0].get('policy_type', 'Machine') if all_values else 'Machine'
                 )
                 if result is not None and self._compare_values(result[0], item.get('value')):
@@ -181,7 +181,7 @@ class PolicyStateManager:
 
         return False
 
-    def _check_disabled(self, policy_metadata, all_values, base_key):
+    def _check_disabled(self, name_gpt, policy_metadata, all_values, base_key):
         disabled_value = None
         disabled_list = []
 
@@ -206,7 +206,7 @@ class PolicyStateManager:
                 item_key = item.get('key') or base_key
                 item_vn = item.get('valueName', '')
                 result = self.gpt_worker.get_policy_value(
-                    self.data_store._current_gpo_path or '', item_key, item_vn,
+                    name_gpt, item_key, item_vn,
                     all_values[0].get('policy_type', 'Machine') if all_values else 'Machine'
                 )
                 if result is not None and self._compare_values(result[0], item.get('value')):
@@ -250,7 +250,7 @@ class PolicyStateManager:
                 try:
                     self.gpt_worker.delete_policy_value(name_gpt, item_key, item_vn, policy_type)
                 except Exception:
-                    pass
+                    logger.debug("Failed to delete disabled_list entry %s\\%s", item_key, item_vn)
 
         for key, val in policy_metadata.items():
             if key == 'header':
@@ -304,7 +304,7 @@ class PolicyStateManager:
                 try:
                     self.gpt_worker.delete_policy_value(name_gpt, item_key, item_vn, policy_type)
                 except Exception:
-                    pass
+                    logger.debug("Failed to delete enabled_list entry %s\\%s", item_key, item_vn)
 
         for key, val in policy_metadata.items():
             if key == 'header':
@@ -321,7 +321,7 @@ class PolicyStateManager:
                 try:
                     self.gpt_worker.delete_policy_value(name_gpt, element_key, vn, policy_type)
                 except Exception:
-                    pass
+                    logger.debug("Failed to delete element %s\\%s", element_key, vn)
 
     def _set_not_configured(self, name_gpt, policy_type, policy_metadata, base_key, value_name):
         meta = self._get_policy_value_meta(policy_metadata)
@@ -332,7 +332,7 @@ class PolicyStateManager:
                 try:
                     self.gpt_worker.delete_policy_value(name_gpt, base_key, vn, policy_type)
                 except Exception:
-                    pass
+                    logger.debug("Failed to delete policyValue %s\\%s", base_key, vn)
 
             for item in meta.get('enabledList', []) + meta.get('disabledList', []):
                 item_key = item.get('key') or base_key
@@ -341,7 +341,7 @@ class PolicyStateManager:
                     try:
                         self.gpt_worker.delete_policy_value(name_gpt, item_key, item_vn, policy_type)
                     except Exception:
-                        pass
+                        logger.debug("Failed to delete list entry %s\\%s", item_key, item_vn)
 
         for key, val in policy_metadata.items():
             if key == 'header':
@@ -358,7 +358,7 @@ class PolicyStateManager:
                 try:
                     self.gpt_worker.delete_policy_value(name_gpt, element_key, vn, policy_type)
                 except Exception:
-                    pass
+                    logger.debug("Failed to delete element %s\\%s", element_key, vn)
             if mtype == 'list':
                 list_key = m.get('key', element_key)
                 if list_key:
@@ -372,7 +372,7 @@ class PolicyStateManager:
                                 try:
                                     self.gpt_worker.delete_policy_value(name_gpt, ek, evn, policy_type)
                                 except Exception:
-                                    pass
+                                    logger.debug("Failed to delete list value %s\\%s", ek, evn)
 
     @staticmethod
     def _get_policy_value_meta(policy_metadata):

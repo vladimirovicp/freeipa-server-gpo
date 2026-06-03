@@ -196,6 +196,7 @@ function setupAdmxTemplateController({
             });
         } catch (error) {
             console.error('[ADMX] Failed to apply policy values.', error);
+            alert('Failed to apply policy: ' + (error.message || error));
             return;
         } finally {
             isSaving = false;

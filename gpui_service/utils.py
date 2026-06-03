@@ -19,6 +19,10 @@
 Utility functions for path resolution and normalization.
 """
 
+import os
+import tempfile
+from pathlib import Path
+
 
 def resolve_gpo_path(path: str | None, sysvol_path: str) -> str:
     """
@@ -95,3 +99,46 @@ def validate_path_in_sysvol(resolved_path: str, sysvol_path: str) -> None:
     path_str = str(real_path)
     if path_str != sysvol_str and not path_str.startswith(sysvol_str + '/'):
         raise ValueError("Path traversal detected: {} escapes {}".format(resolved_path, sysvol_path))
+
+
+def atomic_write(path, content, encoding='utf-8', suffix='.tmp'):
+    """Write content to file atomically via temp file + os.replace.
+
+    Args:
+        path: Target file path.
+        content: String content to write.
+        encoding: Text encoding (default utf-8).
+        suffix: Temp file suffix.
+    """
+    dir_path = os.path.dirname(path)
+    os.makedirs(dir_path, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix, dir=dir_path)
+    try:
+        with os.fdopen(fd, 'w', encoding=encoding) as f:
+            f.write(content)
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
+
+
+def atomic_write_bytes(path, content, suffix='.tmp'):
+    """Write bytes content to file atomically via temp file + os.replace.
+
+    Args:
+        path: Target file path.
+        content: Bytes content to write.
+        suffix: Temp file suffix.
+    """
+    dir_path = os.path.dirname(path)
+    os.makedirs(dir_path, exist_ok=True)
+    fd, tmp_path = tempfile.mkstemp(suffix=suffix, dir=dir_path)
+    try:
+        with os.fdopen(fd, 'wb') as f:
+            f.write(content)
+        os.replace(tmp_path, path)
+    except Exception:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+        raise
