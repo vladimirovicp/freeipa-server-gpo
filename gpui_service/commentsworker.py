@@ -28,18 +28,8 @@ class CommentsWorker:
         self.sysvol_path = sysvol_path
 
     def read_comments(self, gpo_path, scope, locale=''):
-        """
-        Read comments from comment.cmtx (+ optional .cmtl for locale).
-
-        Args:
-            gpo_path: Resolved path to GPO within sysvol
-            scope: 'Machine' or 'User'
-            locale: Locale string (e.g., 'en-US') for CMTL lookup
-
-        Returns:
-            dict {policy_name: comment_text, ...}
-        """
         cmtx_path = self._get_cmtx_path(gpo_path, scope)
+        utils.validate_path_in_sysvol(cmtx_path, self.sysvol_path)
         if not os.path.exists(cmtx_path):
             logger.debug(f"CMTX file not found: {cmtx_path}")
             return {}
@@ -88,6 +78,7 @@ class CommentsWorker:
             True if successful
         """
         cmtx_path = self._get_cmtx_path(gpo_path, scope)
+        utils.validate_path_in_sysvol(cmtx_path, self.sysvol_path)
         comments = self.read_comments(gpo_path, scope)
 
         parts = policy_ref.split(':', 1)
@@ -115,6 +106,7 @@ class CommentsWorker:
             True if successful
         """
         cmtx_path = self._get_cmtx_path(gpo_path, scope)
+        utils.validate_path_in_sysvol(cmtx_path, self.sysvol_path)
         comments = self.read_comments(gpo_path, scope)
 
         parts = policy_ref.split(':', 1)

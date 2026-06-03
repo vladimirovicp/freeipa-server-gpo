@@ -22,7 +22,6 @@ Uses Samba GPPolParser for reading/writing Group Policy registry.pol files
 
 import logging
 from pathlib import Path
-import traceback
 
 try:
     from . import utils
@@ -659,7 +658,7 @@ class GPTWorker:
         lines = ['[General]\n']
         for key, value in ini_data.items():
             lines.append('{}={}\n'.format(key, value))
-        gpt_ini_path.write_text(''.join(lines), encoding='utf-8')
+        utils.atomic_write(str(gpt_ini_path), ''.join(lines))
 
     def increment_gpo_version(self, gpo_path, scope='Machine', display_name=None):
         """

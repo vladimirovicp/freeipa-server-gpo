@@ -119,6 +119,17 @@ class GPODataStore:
     def data(self, value):
         self._navigator.data = value
 
+    @staticmethod
+    def _split_key_value_name(key_path):
+        """Split 'key\\value_name' into (key_path, value_name).
+
+        If key_path has only one component, returns (key_path, '').
+        """
+        parts = key_path.split('\\')
+        if len(parts) > 1 and parts[-1].strip():
+            return '\\'.join(parts[:-1]), parts[-1]
+        return key_path, ''
+
     def get_system_locale(self) -> str:
         """
         Get system locale in ADMX format (e.g., 'ru-RU', 'en-US').
@@ -435,12 +446,7 @@ class GPODataStore:
 
         # If no metadata and value_name not set, extract from key_path
         if not metadata_obj and not value_name:
-            key_parts = key_path.split('\\')
-            if len(key_parts) > 1:
-                potential_value_name = key_parts[-1]
-                if potential_value_name.strip():
-                    value_name = potential_value_name
-                    key_path = '\\'.join(key_parts[:-1])
+            key_path, value_name = self._split_key_value_name(key_path)
 
         # Call GPTWorker
         resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
@@ -460,13 +466,13 @@ class GPODataStore:
             return -1
         except (OSError, IOError) as exp:
             logger.error(f"I/O error writing policy to {resolved_name_gpt}: {exp}")
-            return False
+            return -1
         except (ValueError, json.JSONDecodeError) as exp:
             logger.error(f"Data error setting policy value: {exp}")
-            return False
+            return -1
         except Exception as exp:
             logger.exception(f"Unexpected error setting policy value: {exp}")
-            return False
+            return -1
 
     def _extract_key_and_value_from_metadata(self, key_path, metadata_obj, heavy_meta=None):
         """Adjust key_path and value_name based on metadata header and heavy key metadata."""
@@ -557,13 +563,7 @@ class GPODataStore:
             policy_type = target
 
         key_path = AdmxParser.normalize_registry_key(path)
-        value_name = ''
-        key_parts = key_path.split('\\')
-        if len(key_parts) > 1:
-            potential_value_name = key_parts[-1]
-            if potential_value_name.strip():
-                value_name = potential_value_name
-                key_path = '\\'.join(key_parts[:-1])
+        key_path, value_name = self._split_key_value_name(key_path)
 
         resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
         logger.debug(f"Calling GPTWorker.delete_policy_value: name_gpt={name_gpt}, resolved={resolved_name_gpt}, key_path={key_path}, value_name={value_name}, policy_type={policy_type}")
@@ -788,15 +788,7 @@ class GPODataStore:
         key_path = AdmxParser.normalize_registry_key(path)
         # Use empty string for default value name
         value_name = ''
-        # Try to extract value_name from key_path (last component)
-        key_parts = key_path.split('\\')
-        if len(key_parts) > 1:
-            potential_value_name = key_parts[-1]
-            # Check if potential_value_name is not empty and not purely numeric?
-            if potential_value_name.strip():
-                value_name = potential_value_name
-                # Adjust key_path to parent
-                key_path = '\\'.join(key_parts[:-1])
+        key_path, value_name = self._split_key_value_name(key_path)
 
         try:
             result = self.gpt_worker.get_policy_value(
@@ -1015,33 +1007,28 @@ class GPODataStore:
             return {'success': False, 'new_version': -1}
         except (OSError, IOError) as exp:
             logger.error(f"I/O error deleting preference from {gpo_guid}: {exp}")
-            return False
+            return {'success': False, 'new_version': -1}
         except (ValueError, json.JSONDecodeError) as exp:
             logger.error(f"Data error deleting preference: {exp}")
-            return False
+            return {'success': False, 'new_version': -1}
         except Exception as exp:
             logger.exception(f"Unexpected error deleting preference: {exp}")
-            return False
+            return {'success': False, 'new_version': -1}
 
     def get_display_name(self, name_gpt):
-        """Get displayName for a GPO, reading from GPT.INI if not cached.
-
-        Args:
-            name_gpt: GPO path (relative to sysvol)
-
-        Returns:
-            Display name string or empty string if not found.
-        """
+        """Get displayName for a GPO, reading from GPT.INI if not cached."""
         resolved = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
-        if resolved in self._gpo_display_names:
-            return self._gpo_display_names[resolved]
+        with self.lock:
+            if resolved in self._gpo_display_names:
+                return self._gpo_display_names[resolved]
         if self.gpt_worker:
             try:
                 gpt_ini_path = self.gpt_worker._get_gpt_ini_path(resolved)
                 ini_data = self.gpt_worker._parse_gpt_ini(gpt_ini_path)
                 name = ini_data.get('displayName', '')
                 if name:
-                    self._gpo_display_names[resolved] = name
+                    with self.lock:
+                        self._gpo_display_names[resolved] = name
                 return name
             except Exception as exp:
                 logger.debug("Could not read displayName from GPT.INI: %s", exp)

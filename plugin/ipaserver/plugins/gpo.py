@@ -236,10 +236,15 @@ class gpo(LDAPObject):
                 reason=_('%(pkey)s: Group Policy Object not found') % {'pkey': displayname}
             )
 
-    def _call_dbus_method(self, method_name, guid, domain, *extra_args, fail_on_error=True):
-        """Universal D-Bus method caller for GPO operations."""
-        params = [guid, domain] + list(extra_args)
+    def _call_dbus_method(self, method_name, *params, fail_on_error=True, return_stdout=False):
+        """Universal D-Bus method caller for GPO operations.
 
+        Args:
+            method_name: D-Bus method name on org.freeipa.server interface
+            *params: Arguments passed to the D-Bus method
+            fail_on_error: Raise ExecutionError on failure (default True)
+            return_stdout: If True, return stdout on success instead of None
+        """
         try:
             bus = _get_bus()
             obj = bus.get_object('org.freeipa.server', '/',
@@ -260,44 +265,9 @@ class gpo(LDAPObject):
                     )
                 else:
                     logger.warning(error_msg)
+                    return stdout if return_stdout else None
 
-
-        except dbus.DBusException as e:
-            error_msg = f'Failed to call D-Bus {method_name}: {str(e)}'
-            logger.error(error_msg)
-
-            if fail_on_error:
-                raise errors.ExecutionError(
-                    message=_('Failed to communicate with D-Bus service')
-                )
-            else:
-                logger.warning(error_msg)
-
-    def _call_dbus_method_with_output(self, method_name, *params, fail_on_error=True):
-        """D-Bus method caller that returns stdout."""
-        try:
-            bus = _get_bus()
-            obj = bus.get_object('org.freeipa.server', '/',
-                               follow_name_owner_changes=True)
-            server = dbus.Interface(obj, 'org.freeipa.server')
-
-            method = getattr(server, method_name)
-            ret, stdout, stderr = method(*params)
-
-            if ret != 0:
-                error_msg = f"Failed to {method_name.replace('_', ' ')}: {stderr}"
-                logger.error(error_msg)
-
-                if fail_on_error:
-                    raise errors.ExecutionError(
-                        message=_(f'Failed to {method_name.replace("_", " ")}: %(error)s')
-                                % {'error': stderr or _('Unknown error')}
-                    )
-                else:
-                    logger.warning(error_msg)
-                    return None
-
-            return stdout
+            return stdout if return_stdout else None
 
         except dbus.DBusException as e:
             error_msg = f'Failed to call D-Bus {method_name}: {str(e)}'
