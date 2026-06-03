@@ -661,7 +661,7 @@ class GPTWorker:
             lines.append('{}={}\n'.format(key, value))
         gpt_ini_path.write_text(''.join(lines), encoding='utf-8')
 
-    def increment_gpo_version(self, gpo_path, scope='Machine'):
+    def increment_gpo_version(self, gpo_path, scope='Machine', display_name=None):
         """
         Increment GPO version in GPT.INI.
 
@@ -671,9 +671,11 @@ class GPTWorker:
         Args:
             gpo_path: Relative path to GPO within sysvol
             scope: 'Machine' or 'User' — which version to increment
+            display_name: Optional displayName to write into GPT.INI.
+                          If None, existing displayName is preserved.
 
         Returns:
-            True if successful, False otherwise
+            New version integer on success, -1 on failure.
         """
         try:
             gpt_ini_path = self._get_gpt_ini_path(gpo_path)
@@ -696,19 +698,21 @@ class GPTWorker:
             new_version = (user_version << 16) | machine_version
             ini_data['Version'] = str(new_version)
 
-            if 'displayName' not in ini_data:
-                ini_data['displayName'] = 'New Group Policy Object'
+            if display_name is not None:
+                ini_data['displayName'] = display_name
+            elif 'displayName' not in ini_data:
+                ini_data['displayName'] = ''
             if 'flags' not in ini_data:
                 ini_data['flags'] = '0'
 
             self._write_gpt_ini(gpt_ini_path, ini_data)
             logger.info("GPT.INI version updated to {} (User={}, Machine={})".format(
                 new_version, user_version, machine_version))
-            return True
+            return new_version
 
         except (OSError, IOError) as e:
             logger.error("Failed to update GPT.INI version: {}".format(e))
-            return False
+            return -1
         except Exception as e:
             logger.error("Unexpected error updating GPT.INI: {}".format(e))
-            return False
+            return -1

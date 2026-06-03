@@ -262,6 +262,7 @@ define([
             var close_modal = function() {
                 modal.remove();
                 backdrop.remove();
+                facet.refresh();
             };
 
             modal.find('.close').on('click', close_modal);

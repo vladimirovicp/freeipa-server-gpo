@@ -28,6 +28,27 @@ def escape_backslashes(text):
         return text
     return text.replace('\\', '\\\\')
 
+def _extract_guid(name_gpt):
+    """Extract GUID from GPO file system path or name."""
+    if not name_gpt:
+        return None
+    match = re.search(r'\{[0-9A-Fa-f-]+\}', str(name_gpt))
+    return match.group(0) if match else None
+
+def _update_ldap_version(api, guid, version):
+    """Update versionNumber in LDAP for a GPO identified by GUID."""
+    if not guid or version < 0:
+        return
+    try:
+        ldap = api.Backend.ldap2
+        dn = DN(('cn', guid), api.env.container_grouppolicy, api.env.basedn)
+        entry = ldap.get_entry(dn, ['versionnumber'])
+        entry['versionnumber'] = int(version)
+        ldap.update_entry(entry)
+        logger.debug('LDAP versionNumber updated to %d for %s', version, guid)
+    except Exception as e:
+        logger.warning('Failed to update LDAP versionNumber for %s: %s', guid, e)
+
 register = Registry()
 
 _bus = None
@@ -215,9 +236,9 @@ class gpo(LDAPObject):
                 reason=_('%(pkey)s: Group Policy Object not found') % {'pkey': displayname}
             )
 
-    def _call_dbus_method(self, method_name, guid, domain, fail_on_error=True):
+    def _call_dbus_method(self, method_name, guid, domain, *extra_args, fail_on_error=True):
         """Universal D-Bus method caller for GPO operations."""
-        params = [guid, domain]
+        params = [guid, domain] + list(extra_args)
 
         try:
             bus = _get_bus()
@@ -385,7 +406,8 @@ class gpo_add(LDAPCreate):
     def post_callback(self, ldap, dn, entry_attrs, *keys, **options):
         guid = str(dn[0].value)
         domain = api.env.domain.lower()
-        self.obj._call_dbus_method('create_gpo_structure', guid, domain, fail_on_error=True)
+        displayname = keys[-1] if keys else 'New Group Policy Object'
+        self.obj._call_dbus_method('create_gpo_structure', guid, domain, displayname, fail_on_error=True)
 
         return dn
 
@@ -485,6 +507,45 @@ class gpo_mod(LDAPUpdate):
                 pass
 
         return old_dn
+
+@register()
+class gpo_update_version(Command):
+    __doc__ = _("Update GPO version number in LDAP.")
+
+    takes_args = (
+        Str('guid',
+            cli_name='guid',
+            label=_('GPO GUID'),
+            doc=_('GUID of the Group Policy Object'),
+            pattern=r'^\{[0-9A-Fa-f-]+\}$',
+        ),
+        Int('gpo_version',
+            cli_name='gpo_version',
+            label=_('Version'),
+            doc=_('New version number'),
+            minvalue=0,
+        ),
+    )
+
+    has_output = (
+        output.summary,
+        output.Output('result', type=dict, doc=_('Updated attributes')),
+    )
+
+    def execute(self, guid, gpo_version, **options):
+        ldap = self.api.Backend.ldap2
+        verify_gpo_schema(ldap, self.api)
+
+        dn = DN(('cn', guid), self.api.env.container_grouppolicy, self.api.env.basedn)
+        entry = ldap.get_entry(dn, ['versionnumber'])
+        entry['versionnumber'] = gpo_version
+        ldap.update_entry(entry)
+
+        return dict(
+            summary=_('Updated GPO "%s" version to %d') % (guid, gpo_version),
+            result=dict(guid=guid, versionnumber=gpo_version),
+        )
+
 
 @register()
 class gpo_get_policy(Command):
@@ -752,14 +813,17 @@ class gpo_set_policy(Command):
 
             success = self.api.Object.gpo._call_gpuiservice_method('set', name_gpt, target, path, value, metadata)
 
-            logger.debug(f'gpo_set_policy returning success: {success}')
-            if success:
+            logger.debug(f'gpo_set_policy returning result: {success}')
+            new_version = int(success) if success is not None else -1
+            if new_version >= 0:
+                guid = _extract_guid(name_gpt)
+                _update_ldap_version(self.api, guid, new_version)
                 summary = 'Policy set successfully: {} = "{}"'.format(escape_backslashes(path), escape_backslashes(value))
             else:
                 summary = 'Failed to set policy: {} = "{}"'.format(escape_backslashes(path), escape_backslashes(value))
             return {
                 'summary': summary,
-                'success': bool(success)
+                'success': new_version >= 0
             }
 
         except Exception as e:
@@ -878,12 +942,15 @@ class gpo_delete_policy(Command):
             if isinstance(path, str) and path.startswith('path='):
                 path = path[len('path='):]
 
-            success = self.api.Object.gpo._call_gpuiservice_method(
+            result = self.api.Object.gpo._call_gpuiservice_method(
                 'delete_policy_value', name_gpt, target, path
             )
 
-            logger.debug('gpo_delete_policy returning success: %s', success)
-            if success:
+            new_version = int(result) if result is not None else -1
+            logger.debug('gpo_delete_policy returning version: %s', new_version)
+            if new_version >= 0:
+                guid = _extract_guid(name_gpt)
+                _update_ldap_version(self.api, guid, new_version)
                 summary = 'Policy deleted: {} for GPO {}, target {}'.format(
                     path, name_gpt, target
                 )
@@ -893,7 +960,7 @@ class gpo_delete_policy(Command):
                 )
             return {
                 'summary': summary,
-                'success': bool(success),
+                'success': new_version >= 0,
             }
 
         except Exception as e:
@@ -960,6 +1027,10 @@ class gpo_save_preference(Command):
                 raw_result = json.loads(str(result_json))
             else:
                 raw_result = {'success': False, 'message': 'Empty response', 'uid': uid}
+
+            if raw_result.get('success') and 'new_version' in raw_result:
+                guid = _extract_guid(name_gpt)
+                _update_ldap_version(self.api, guid, raw_result['new_version'])
 
             logger.debug('gpo_save_preference returning result: %s', raw_result)
 
@@ -1081,12 +1152,23 @@ class gpo_delete_preference(Command):
                 name_gpt, target, pref_type, uid
             )
 
-            success = self.api.Object.gpo._call_gpuiservice_method(
+            result_json = self.api.Object.gpo._call_gpuiservice_method(
                 'delete_preference', name_gpt, target, pref_type, uid
             )
 
-            logger.debug('gpo_delete_preference returning success: %s', success)
-            if success:
+            if isinstance(result_json, str):
+                raw_result = json.loads(result_json)
+            elif isinstance(result_json, dict):
+                raw_result = result_json
+            else:
+                raw_result = {'success': bool(result_json), 'new_version': -1}
+
+            if raw_result.get('success') and raw_result.get('new_version', -1) >= 0:
+                guid = _extract_guid(name_gpt)
+                _update_ldap_version(self.api, guid, raw_result['new_version'])
+
+            logger.debug('gpo_delete_preference returning result: %s', raw_result)
+            if raw_result.get('success'):
                 summary = 'Preference deleted: {} {} (uid: {})'.format(
                     pref_type, name_gpt, uid
                 )
@@ -1096,7 +1178,7 @@ class gpo_delete_preference(Command):
                 )
             return {
                 'summary': summary,
-                'success': bool(success),
+                'success': raw_result.get('success', False),
             }
 
         except Exception as e:
