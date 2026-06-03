@@ -62,7 +62,7 @@ class GPUIService(dbus.service.Object):
                     <arg name="path" direction="in" type="s"/>
                     <arg name="value" direction="in" type="s"/>
                     <arg name="metadata" direction="in" type="s"/>
-                    <arg name="success" direction="out" type="b"/>
+                    <arg name="success" direction="out" type="i"/>
                     </method>
                     <method name="list_children">
                     <arg name="parent_path" direction="in" type="s"/>
@@ -83,7 +83,7 @@ class GPUIService(dbus.service.Object):
                     <arg name="name_gpt" direction="in" type="s"/>
                     <arg name="target" direction="in" type="s"/>
                     <arg name="path" direction="in" type="s"/>
-                    <arg name="success" direction="out" type="b"/>
+                    <arg name="new_version" direction="out" type="i"/>
                     </method>
                     <method name="reload">
                     <arg name="success" direction="out" type="b"/>
@@ -107,7 +107,7 @@ class GPUIService(dbus.service.Object):
                     <arg name="scope" direction="in" type="s"/>
                     <arg name="pref_type" direction="in" type="s"/>
                     <arg name="uid" direction="in" type="s"/>
-                    <arg name="success" direction="out" type="b"/>
+                    <arg name="result" direction="out" type="s"/>
                     </method>
                     <method name="update_paths">
                     <arg name="monitor_path" direction="in" type="s"/>
@@ -167,6 +167,15 @@ class GPUIService(dbus.service.Object):
                     <arg name="policy_ref" direction="in" type="s"/>
                     <arg name="success" direction="out" type="b"/>
                     </method>
+                    <method name="get_display_name">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="result" direction="out" type="s"/>
+                    </method>
+                    <method name="set_display_name">
+                    <arg name="name_gpt" direction="in" type="s"/>
+                    <arg name="display_name" direction="in" type="s"/>
+                    <arg name="success" direction="out" type="b"/>
+                    </method>
                     <signal name="locale_changed">
                     <arg name="locale" type="s"/>
                     </signal>
@@ -215,7 +224,7 @@ class GPUIService(dbus.service.Object):
         else:
             return str(value)
 
-    @dbus.service.method('org.altlinux.GPUIService', in_signature='sssss', out_signature='b')
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='sssss', out_signature='i')
     def set(self, name_gpt, target, path, value, metadata):
         """
         Set parameter value in GPO
@@ -226,13 +235,13 @@ class GPUIService(dbus.service.Object):
             value: Value to set
             metadata: ADMX metadata path (optional, empty string to extract from value)
         Returns:
-            True if successful, False otherwise
+            New GPT.INI version on success, -1 on failure
         """
         val_log = value if len(str(value)) <= 100 else str(value)[:100] + '...'
         logger.info(f"set method called with path: {path}, name_gpt: {name_gpt}, target: {target}, value: {val_log}, metadata: {metadata}")
-        # Convert empty target to None (use defaults)
         target_param = target if target else None
-        return self.data_store.set(path, value, name_gpt, target_param, metadata)
+        result = self.data_store.set(path, value, name_gpt, target_param, metadata)
+        return int(result) if result is not None else -1
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='s', out_signature='v')
     def list_children(self, parent_path):
@@ -301,27 +310,28 @@ class GPUIService(dbus.service.Object):
             logger.exception("Unexpected error in get_current_value: %s", e)
             return ""
 
-    @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='b')
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='sss', out_signature='i')
     def delete_policy_value(self, name_gpt, target, path):
         """
         Delete a policy value from GPO Registry.pol file
         Args:
             name_gpt: GPO path (relative to sysvol)
             target: Policy type ('Machine' or 'User'), empty string for default
-            path: Registry key path (e.g., 'Software\\BaseALT\\Policies\\GPUpdate\\SettingName')
+            path: Registry key path
         Returns:
-            True if deleted (or value didn't exist), False on error
+            New GPT.INI version on success, -1 on failure
         """
         logger.info(f"delete_policy_value method called with name_gpt: {name_gpt}, target: {target}, path: {path}")
         try:
             target_param = target if target else None
-            return self.data_store.delete_policy_value(path, name_gpt, target_param)
+            result = self.data_store.delete_policy_value(path, name_gpt, target_param)
+            return int(result) if result is not None else -1
         except (OSError, IOError) as e:
             logger.error("I/O error in delete_policy_value: %s", e)
-            return False
+            return -1
         except Exception as e:
             logger.exception("Unexpected error in delete_policy_value: %s", e)
-            return False
+            return -1
 
     @dbus.service.method('org.altlinux.GPUIService', out_signature='b')
     def reload(self):
@@ -405,7 +415,7 @@ class GPUIService(dbus.service.Object):
             logger.exception(f"Unexpected error in get_preferences: {e}")
             return json.dumps({}, ensure_ascii=False)
 
-    @dbus.service.method('org.altlinux.GPUIService', in_signature='ssss', out_signature='b')
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='ssss', out_signature='s')
     def delete_preference(self, gpo_guid, scope, pref_type, uid):
         """
         Delete a specific preference by UID
@@ -417,17 +427,20 @@ class GPUIService(dbus.service.Object):
             uid: UID of the preference to delete
 
         Returns:
-            True if deleted, False otherwise
+            JSON with success and new_version
         """
         logger.info(f"delete_preference method called with gpo_guid: {gpo_guid}, scope: {scope}, pref_type: {pref_type}, uid: {uid}")
         try:
-            return self.data_store.delete_preference(gpo_guid, scope, pref_type, uid)
+            result = self.data_store.delete_preference(gpo_guid, scope, pref_type, uid)
+            if isinstance(result, dict):
+                return json.dumps(result, ensure_ascii=False)
+            return json.dumps({'success': bool(result), 'new_version': -1}, ensure_ascii=False)
         except (OSError, IOError) as e:
             logger.error(f"I/O error deleting preference: {e}")
-            return False
+            return json.dumps({'success': False, 'new_version': -1}, ensure_ascii=False)
         except Exception as e:
             logger.exception(f"Unexpected error in delete_preference: {e}")
-            return False
+            return json.dumps({'success': False, 'new_version': -1}, ensure_ascii=False)
 
     @dbus.service.method('org.altlinux.GPUIService', in_signature='ss', out_signature='b')
     def update_paths(self, monitor_path, sysvol_path):
@@ -657,6 +670,44 @@ class GPUIService(dbus.service.Object):
             return self.data_store.delete_comment(name_gpt, target, policy_ref)
         except Exception as e:
             logger.exception(f"Error in delete_comment: {e}")
+            return False
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='s', out_signature='s')
+    def get_display_name(self, name_gpt):
+        """
+        Get displayName for a GPO.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+
+        Returns:
+            Display name string
+        """
+        logger.info(f"get_display_name called: name_gpt={name_gpt}")
+        try:
+            result = self.data_store.get_display_name(name_gpt)
+            return json.dumps({'status': 'success', 'result': result}, ensure_ascii=False)
+        except Exception as e:
+            logger.exception(f"Error in get_display_name: {e}")
+            return json.dumps({'status': 'error', 'message': str(e)}, ensure_ascii=False)
+
+    @dbus.service.method('org.altlinux.GPUIService', in_signature='ss', out_signature='b')
+    def set_display_name(self, name_gpt, display_name):
+        """
+        Set displayName for a GPO in GPT.INI.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            display_name: New display name
+
+        Returns:
+            True if successful
+        """
+        logger.info(f"set_display_name called: name_gpt={name_gpt}")
+        try:
+            return self.data_store.set_display_name(name_gpt, display_name)
+        except Exception as e:
+            logger.exception(f"Error in set_display_name: {e}")
             return False
 
     @dbus.service.signal('org.altlinux.GPUIService')

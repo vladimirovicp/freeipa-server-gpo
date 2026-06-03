@@ -17,6 +17,7 @@ def main():
 
     guid = sys.argv[1]
     domain = sys.argv[2]
+    displayname = sys.argv[3] if len(sys.argv) > 3 else 'New Group Policy Object'
 
     if not is_valid_guid(guid):
         print("Error: Invalid GUID format: {}".format(guid), file=sys.stderr)
@@ -48,6 +49,7 @@ def main():
         gpt_ini_path = get_gpt_ini_path(domain, guid)
         with open(gpt_ini_path, 'w', encoding='utf-8') as gpt_file:
             gpt_file.write("[General]\n")
+            gpt_file.write("displayName={}\n".format(displayname))
             gpt_file.write("Version=0\n")
 
         print("Created GPT.INI file: {}".format(gpt_ini_path))
