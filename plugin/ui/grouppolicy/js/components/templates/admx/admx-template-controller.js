@@ -204,6 +204,138 @@ function setupAdmxTemplateController({
         }
     };
 
+    const packagesModal = admxTemplateElement.querySelector('.packages-control__modal');
+
+    if (packagesModal) {
+        const packagesContent = packagesModal.querySelector('.packages-control__modal-content');
+        const packagesBtnNew = packagesModal.querySelector('.btn-new');
+        const packagesBtnDelete = packagesModal.querySelector('.btn-delete');
+        const packagesBtnCancel = packagesModal.querySelector('.btn-cancel');
+        const packagesBtnOk = packagesModal.querySelector('.btn-ok');
+        const packagesClose = packagesModal.querySelector('.close');
+        const packagesTitle = packagesModal.querySelector('.packages-control__modal-header .title');
+
+        let workingPackages = [];
+        let currentHiddenInput = null;
+
+        const renderPackageItems = () => {
+            packagesContent.innerHTML = '';
+
+            workingPackages.forEach((pkg, index) => {
+                const item = document.createElement('div');
+                item.className = 'packages-control__package-item';
+                item.setAttribute('contenteditable', 'false');
+                item.textContent = pkg;
+
+                item.addEventListener('click', (e) => {
+                    if (item.isContentEditable) return;
+                    const wasSelected = item.classList.contains('selected');
+                    packagesContent.querySelectorAll('.packages-control__package-item').forEach(el => el.classList.remove('selected'));
+                    if (!wasSelected) {
+                        item.classList.add('selected');
+                    }
+                });
+
+                item.addEventListener('dblclick', () => {
+                    item.setAttribute('contenteditable', 'true');
+                    item.focus();
+                    const range = document.createRange();
+                    range.selectNodeContents(item);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                });
+
+                item.addEventListener('blur', () => {
+                    item.setAttribute('contenteditable', 'false');
+                    workingPackages[index] = item.textContent.trim();
+                });
+
+                item.addEventListener('keydown', (e) => {
+                    if (e.key === 'Enter') {
+                        e.preventDefault();
+                        item.blur();
+                    }
+                });
+
+                packagesContent.appendChild(item);
+            });
+        };
+
+        const handleEditBtnClick = (event) => {
+            const btn = event.target.closest('.packages-control__btn-edit');
+            if (!btn) return;
+            if (btn.disabled) return;
+
+            const fieldElement = btn.closest('.field__element');
+            const hiddenInput = fieldElement ? fieldElement.querySelector('input[type="hidden"]') : null;
+            if (!hiddenInput) return;
+
+            currentHiddenInput = hiddenInput;
+
+            const raw = hiddenInput.value || '';
+            if (raw === '') {
+                workingPackages = [];
+            } else {
+                workingPackages = raw.split(',').map(s => s.trim()).filter(Boolean);
+            }
+
+            const storagePath = hiddenInput.getAttribute('data-storage-path') || '';
+            const listEntry = controlEntries.find(e => e.storagePath === storagePath || e.policyPath === storagePath);
+            if (packagesTitle && listEntry?.metadata?.label) {
+                packagesTitle.textContent = listEntry.metadata.label;
+            }
+
+            renderPackageItems();
+            packagesModal.classList.add('active');
+        };
+
+        const handlePackagesNew = () => {
+            workingPackages.push('');
+            renderPackageItems();
+            const items = packagesContent.querySelectorAll('.packages-control__package-item');
+            const lastItem = items[items.length - 1];
+            if (lastItem) {
+                lastItem.setAttribute('contenteditable', 'true');
+                lastItem.focus();
+            }
+        };
+
+        const handlePackagesDelete = () => {
+            const selected = packagesContent.querySelector('.packages-control__package-item.selected');
+            if (!selected) return;
+            const items = Array.from(packagesContent.querySelectorAll('.packages-control__package-item'));
+            const index = items.indexOf(selected);
+            if (index !== -1) {
+                workingPackages.splice(index, 1);
+                renderPackageItems();
+            }
+        };
+
+        const closePackagesModal = () => {
+            packagesModal.classList.remove('active');
+            packagesContent.innerHTML = '';
+            workingPackages = [];
+            currentHiddenInput = null;
+        };
+
+        const handlePackagesOk = () => {
+            if (currentHiddenInput) {
+                workingPackages = workingPackages.map(pkg => typeof pkg === 'string' ? pkg.trim() : pkg).filter(Boolean);
+                currentHiddenInput.value = workingPackages.join(',');
+                currentHiddenInput.dispatchEvent(new Event('change', { bubbles: true }));
+            }
+            closePackagesModal();
+        };
+
+        addManagedEventListener(cleanups, admxTemplateElement, 'click', handleEditBtnClick);
+        addManagedEventListener(cleanups, packagesBtnNew, 'click', handlePackagesNew);
+        addManagedEventListener(cleanups, packagesBtnDelete, 'click', handlePackagesDelete);
+        addManagedEventListener(cleanups, packagesBtnCancel, 'click', closePackagesModal);
+        addManagedEventListener(cleanups, packagesBtnOk, 'click', handlePackagesOk);
+        addManagedEventListener(cleanups, packagesClose, 'click', closePackagesModal);
+    }
+
     addManagedEventListener(cleanups, statePolicyElement, 'change', handleStatePolicyChange);
     addManagedEventListener(cleanups, admxTemplateElement, 'change', handleControlsChange);
     addManagedEventListener(cleanups, admxTemplateElement, 'input', handleControlsChange);
