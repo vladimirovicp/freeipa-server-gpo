@@ -1,56 +1,31 @@
 @charset "UTF-8";
 .gp__container {
-  min-width: 0;
-  height: 100%;
-  overflow: hidden;
+  min-width: 1200px;
 }
 .gp__main {
   width: 100%;
   height: calc(100% - 64px - 48px);
   display: flex;
-  overflow: hidden;
-}
-.gp__header-left {
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  overflow: hidden;
 }
 .gp__search {
   width: 408px;
-  flex-shrink: 1;
-  min-width: 200px;
 }
 .gp__nav {
   padding: 0 5px;
   width: 206px;
-  flex-shrink: 1;
-  min-width: 100px;
 }
 .gp__control {
   padding: 0 16px;
-  display: none;
-  gap: 20px;
-  flex-shrink: 0;
-}
-.gp__control-actions {
-  margin-left: auto;
-  display: none;
-  align-items: center;
-  gap: 16px;
-  flex-shrink: 0;
-  white-space: nowrap;
-}
-.gp__control-help {
-}
-.gp__control-admx {
   display: flex;
   gap: 20px;
 }
-.gp__control-separator {
-  width: 1px;
-  height: 24px;
-  background-color: #d1d1d1;
+.gp__control-help {
+  margin-left: auto;
+}
+.gp__control-admx {
+  padding: 0 16px;
+  display: flex;
+  gap: 20px;
 }
 .gp__default-template {
   height: 100%;

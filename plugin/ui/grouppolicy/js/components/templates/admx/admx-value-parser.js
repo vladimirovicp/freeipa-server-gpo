@@ -59,6 +59,28 @@ function parseStringValueAsAdmxState(stringValue) {
 }
 
 function parseAdmxCurrentValue(rawValue) {
+    if (Array.isArray(rawValue)) {
+        if (rawValue.length === 0) {
+            return {
+                hasData: false,
+                state: ADMX_DEFAULT_STATE,
+                value: null,
+            };
+        }
+
+        var allPrimitive = rawValue.every(function(item) {
+            return typeof item !== 'object' || item === null;
+        });
+
+        if (allPrimitive && rawValue.length > 1) {
+            return {
+                hasData: true,
+                state: 'enabled',
+                value: rawValue,
+            };
+        }
+    }
+
     const normalizedRawValue = unwrapCurrentValue(rawValue);
 
     if (isPlainObject(normalizedRawValue)) {
@@ -71,6 +93,13 @@ function parseAdmxCurrentValue(rawValue) {
         }
 
         if (Object.prototype.hasOwnProperty.call(normalizedRawValue, 'value_data')) {
+            if (Array.isArray(normalizedRawValue.value_data)) {
+                return {
+                    hasData: true,
+                    state: 'enabled',
+                    value: normalizedRawValue.value_data,
+                };
+            }
             return parseStringValueAsAdmxState(normalizedRawValue.value_data);
         }
 
@@ -98,15 +127,18 @@ function parseAdmxCurrentValue(rawValue) {
 
 function buildAdmxSetValue(state, fieldValue) {
     const normalizedState = normalizeAdmxState(state);
-    const normalizedValue = fieldValue === null || fieldValue === undefined
-        ? ''
-        : String(fieldValue);
 
     if (normalizedState === 'disabled') {
         return ADMX_DISABLED_VALUE_MARKER;
     }
 
     if (normalizedState === 'enabled') {
+        if (Array.isArray(fieldValue)) {
+            return fieldValue.join(',');
+        }
+        const normalizedValue = fieldValue === null || fieldValue === undefined
+            ? ''
+            : String(fieldValue);
         return normalizedValue;
     }
 

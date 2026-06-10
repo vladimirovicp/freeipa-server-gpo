@@ -100,6 +100,8 @@ function getDefaultControlValue(metadata = {}) {
             return Object.prototype.hasOwnProperty.call(metadata, 'falseValue')
                 ? metadata.falseValue
                 : false;
+        case 'list':
+            return [];
         case 'decimal':
         case 'text':
         default:

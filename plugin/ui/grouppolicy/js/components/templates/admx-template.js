@@ -31,6 +31,57 @@ async function renderAdmxTemplate({ isHelpOpen = false, item = {}, admxTreePath 
         isDisabled: true
     }));
 
+    const listEntries = controlEntries.filter(({ metadata }) => metadata?.type === 'list');
+
+    const packagesModal = listEntries.length > 0
+        ? createElement('div', {
+            className: 'packages-control__modal',
+            children: [
+                createElement('div', {
+                    className: 'packages-control__modal-wrapper',
+                    children: [
+                        createElement('div', {
+                            className: 'packages-control__modal-header',
+                            children: [
+                                createElement('div', {
+                                    className: 'title',
+                                    text: listEntries[0].metadata?.label ?? ''
+                                }),
+                                createElement('div', {
+                                    className: 'close'
+                                })
+                            ]
+                        }),
+                        createElement('div', {
+                            className: 'packages-control__modal-content'
+                        }),
+                        createElement('div', {
+                            className: 'packages-control__modal-footer',
+                            children: [
+                                createElement('div', {
+                                    className: ['btn', 'btn-new'],
+                                    text: 'New'
+                                }),
+                                createElement('div', {
+                                    className: ['btn', 'btn-delete'],
+                                    text: 'Delete'
+                                }),
+                                createElement('div', {
+                                    className: ['btn', 'btn-cancel'],
+                                    text: 'Cancel'
+                                }),
+                                createElement('div', {
+                                    className: ['btn', 'btn-ok'],
+                                    text: 'OK'
+                                })
+                            ]
+                        })
+                    ]
+                })
+            ]
+        })
+        : null;
+
     const admxTemplate = createElement('div', {
         className: 'gp__admx-wrapper',
         children: [
@@ -182,7 +233,8 @@ async function renderAdmxTemplate({ isHelpOpen = false, item = {}, admxTreePath 
                         ]
                     })
                 ]
-            })
+            }),
+            ...(packagesModal ? [packagesModal] : [])
         ]
     });
 

@@ -7,7 +7,7 @@ function setControlsDisabledState(rootElement, shouldDisable) {
         return;
     }
 
-    const controls = rootElement.querySelectorAll('.gp__admx-options input, .gp__admx-options select, .gp__admx-options textarea');
+    const controls = rootElement.querySelectorAll('.gp__admx-options input, .gp__admx-options select, .gp__admx-options textarea, .gp__admx-options button.packages-control__btn-edit');
 
     controls.forEach((control) => {
         control.disabled = shouldDisable;
@@ -75,6 +75,11 @@ function readControlValue(controlElement, metadata = {}) {
             const parsedValue = Number(controlElement.value);
             return Number.isNaN(parsedValue) ? controlElement.value : parsedValue;
         }
+        case 'list': {
+            const raw = controlElement.value || '';
+            if (raw === '') return [];
+            return raw.split(',').map(s => s.trim()).filter(Boolean);
+        }
         case 'enum':
         case 'text':
         default:
@@ -96,6 +101,11 @@ function applyControlValue(controlElement, metadata = {}, value = null) {
             controlElement.checked = value === true || String(value) === String(trueValue);
             return;
         }
+        case 'list':
+            controlElement.value = Array.isArray(value)
+                ? value.join(',')
+                : (value || '');
+            return;
         case 'decimal':
         case 'enum':
         case 'text':
