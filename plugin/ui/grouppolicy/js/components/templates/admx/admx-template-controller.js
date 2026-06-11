@@ -137,7 +137,7 @@ function setupAdmxTemplateController({
 
     const handleApply = async () => {
         if (!btnApply?.classList.contains('active') || isSaving) {
-            return;
+            return false;
         }
 
         try {
@@ -192,7 +192,7 @@ function setupAdmxTemplateController({
                     rootElement: admxTemplateElement,
                     controlEntries,
                 });
-                return;
+                return true;
             }
 
             if (selectedState === 'disabled') {
@@ -213,11 +213,13 @@ function setupAdmxTemplateController({
         } catch (error) {
             console.error('[ADMX] Failed to apply policy values.', error);
             alert('Failed to apply policy: ' + (error.message || error));
-            return;
+            return false;
         } finally {
             isSaving = false;
             refreshHeaderAdmxButtons();
         }
+
+        return true;
     };
 
     const packagesModal = admxTemplateElement.querySelector('.packages-control__modal');
@@ -379,6 +381,10 @@ function setupAdmxTemplateController({
 
         if (controlPref) controlPref.style.display = 'none';
     };
+
+    admxTemplate.applyChanges = handleApply;
+    admxTemplate.cancelChanges = handleCancel;
+    admxTemplate.hasUnsavedChanges = () => btnApply?.classList.contains('active') ?? false;
 
     return admxTemplate;
 }

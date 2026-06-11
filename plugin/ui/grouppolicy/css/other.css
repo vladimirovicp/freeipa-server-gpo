@@ -162,3 +162,58 @@
 .packages-control__package-item:focus {
   outline: 1px solid #297FB0;
 }
+
+.gp__container .policy-changed__modal {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  transition: 0.5s all;
+  z-index: 100;
+  border: 1px solid #d1d1d1;
+  background-color: #fff;
+  border-radius: 3px;
+  overflow: hidden;
+}
+.gp__container .policy-changed__modal.active {
+  transform: translate(-50%, -50%) scale(1);
+  transition: 0.5s all;
+}
+.gp__container .policy-changed__modal-wrapper {
+  width: 408px;
+}
+.gp__container .policy-changed__modal-header {
+  background: #f5f5f5;
+  border-bottom: 1px solid #d1d1d1;
+  height: 40px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+}
+.gp__container .policy-changed__modal-header .title {
+  font-weight: 600;
+  color: #363636;
+}
+.gp__container .policy-changed__modal-content {
+  display: flex;
+  flex-direction: column;
+  padding: 20px 10px;
+  min-height: 60px;
+}
+.gp__container .policy-changed__modal-footer {
+  height: 45px;
+  background-color: #fff;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 20px;
+  border-top: 1px solid #d1d1d1;
+}
+.gp__container .policy-changed__modal-footer .btn {
+  width: auto;
+  padding: 0 10px;
+}
+.gp__container .policy-changed__modal-footer .btn-yes {
+  margin-left: auto;
+}
