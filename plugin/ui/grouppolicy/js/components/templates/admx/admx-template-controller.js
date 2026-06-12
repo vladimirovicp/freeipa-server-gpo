@@ -21,6 +21,13 @@ var {
     getSelectedAdmxState,
 } = __dep4;
 
+function isEmptyValue(value, metadata = {}) {
+    if (value === null || value === undefined) return true;
+    if (Array.isArray(value) && value.length === 0) return true;
+    if (metadata?.type !== 'boolean' && value === '') return true;
+    return false;
+}
+
 function addManagedEventListener(cleanups, target, eventName, handler, options) {
     if (!target || typeof target.addEventListener !== 'function' || typeof handler !== 'function') {
         return;
@@ -148,6 +155,8 @@ function setupAdmxTemplateController({
                 throw new Error('ADMX target is not available.');
             }
 
+            let hasNonEmptyValue = false;
+
             await Promise.all(controlEntries.map(async (controlEntry) => {
                 const controlPath = controlEntry.storagePath || controlEntry.policyPath;
 
@@ -156,17 +165,24 @@ function setupAdmxTemplateController({
                 }
 
                 if (selectedState === ADMX_DEFAULT_STATE) {
-                    const deleteResult = await API.deletePolicy(currentNameGpt, effectiveTarget, controlPath);
+                    await API.deletePolicy(currentNameGpt, effectiveTarget, controlPath);
                     return;
                 }
 
                 const controlElement = getControlElementByStoragePath(admxTemplateElement, controlEntry.storagePath);
                 const controlValue = readControlValue(controlElement, controlEntry.metadata);
+
+                if (isEmptyValue(controlValue, controlEntry.metadata)) {
+                    await API.deletePolicy(currentNameGpt, effectiveTarget, controlPath);
+                    return;
+                }
+
+                hasNonEmptyValue = true;
                 const setValue = buildAdmxSetValue(selectedState, controlValue);
-                const setResult = await API.set(currentNameGpt, effectiveTarget, controlPath, setValue);
+                await API.set(currentNameGpt, effectiveTarget, controlPath, setValue);
             }));
 
-            if (selectedState === ADMX_DEFAULT_STATE) {
+            if (selectedState === ADMX_DEFAULT_STATE || (!hasNonEmptyValue && selectedState !== ADMX_DEFAULT_STATE)) {
                 applyDefaultValuesToAdmxForm({
                     rootElement: admxTemplateElement,
                     controlEntries,
