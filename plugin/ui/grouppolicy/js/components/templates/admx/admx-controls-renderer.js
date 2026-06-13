@@ -1,6 +1,7 @@
-define(['../../../util/element-creator', './admx-policy-normalizers'], function(__dep0, __dep1) {
+define(['../../../util/element-creator', '../../../locales/translations', './admx-policy-normalizers'], function(__dep0, __dep1, __dep2) {
 var { createElement } = __dep0;
-var { getEnumDefaultValue } = __dep1;
+var { t } = __dep1;
+var { getEnumDefaultValue } = __dep2;
 
 function formatExplainText(explainText = '') {
     return explainText
@@ -49,7 +50,7 @@ function renderListControl({ metadata = {}, policyPath = '', storagePath = '', i
                     disabled: isDisabled ? 'disabled' : null,
                     'data-storage-path': storagePath || policyPath,
                 },
-                text: 'Редактировать',
+                text: t('common.edit'),
             })
         ]
     });
