@@ -5,7 +5,8 @@ define([], function() {
       help: 'Помощь:',
       description: 'Описание:',
       options: 'Опции:',
-      comment: 'Комментарий:'
+      comment: 'Комментарий:',
+      edit: 'Редактировать'
     },
 
     // Политики
@@ -59,6 +60,13 @@ define([], function() {
     systemSettings: {
       systemSettings:'Настройки Системы',
       scripts: 'Скрипты'
+    },
+
+    policyChangedModal: {
+      title: 'Состояние настроек',
+      message: 'Настройки политики были изменены, хотите сохранить их?',
+      no: 'Нет',
+      yes: 'Да'
     },
   };
 });

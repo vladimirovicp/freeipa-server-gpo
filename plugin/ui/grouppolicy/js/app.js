@@ -64,6 +64,7 @@ define([
     var setFolderOpenedState = treeViewListModule.setFolderOpenedState;
     var createElement = elementCreatorModule.createElement;
     var initShortcutsStorage = shortcutsStorageModule.initShortcutsStorage;
+    var t = translationsModule.t;
 
     function createTreeViewState() {
         return {
@@ -551,24 +552,24 @@ define([
                                 children: [
                                     createElement('div', {
                                         className: 'title',
-                                        text: 'Состояние настроек'
+                                        text: t('policyChangedModal.title')
                                     })
                                 ]
                             }),
                             createElement('div', {
                                 className: 'policy-changed__modal-content',
-                                text: 'Настройки политики были изменены, хотите сохранить их?'
+                                text: t('policyChangedModal.message')
                             }),
                             createElement('div', {
                                 className: 'policy-changed__modal-footer',
                                 children: [
                                     createElement('div', {
                                         className: ['btn', 'btn-no'],
-                                        text: 'Нет'
+                                        text: t('policyChangedModal.no')
                                     }),
                                     createElement('div', {
                                         className: ['btn', 'btn-yes'],
-                                        text: 'Да'
+                                        text: t('policyChangedModal.yes')
                                     })
                                 ]
                             })
