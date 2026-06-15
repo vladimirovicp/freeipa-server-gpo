@@ -55,6 +55,8 @@ class GPODataStore:
         self.monitor_path = None
         self.gpt_worker = None
         self.gpprefs_worker = None
+        self.policy_state_manager = None
+        self._gpo_display_names: dict[str, str] = {}
         try:
             try:
                 from .gptworker import GPTWorker
@@ -77,6 +79,38 @@ class GPODataStore:
             logger.warning(f"GPPrefsWorker not available: {exp}")
             logger.warning("Group Policy Preferences operations will be limited")
 
+        try:
+            try:
+                from .policystate import PolicyStateManager
+            except ImportError:
+                from policystate import PolicyStateManager
+            self.policy_state_manager = PolicyStateManager(self.gpt_worker, self)
+            logger.debug("PolicyStateManager initialized")
+        except ImportError as exp:
+            logger.warning(f"PolicyStateManager not available: {exp}")
+
+        self.scripts_worker = None
+        try:
+            try:
+                from .scriptsworker import ScriptsWorker
+            except ImportError:
+                from scriptsworker import ScriptsWorker
+            self.scripts_worker = ScriptsWorker(sysvol_path)
+            logger.debug("ScriptsWorker initialized")
+        except ImportError as exp:
+            logger.warning(f"ScriptsWorker not available: {exp}")
+
+        self.comments_worker = None
+        try:
+            try:
+                from .commentsworker import CommentsWorker
+            except ImportError:
+                from commentsworker import CommentsWorker
+            self.comments_worker = CommentsWorker(sysvol_path)
+            logger.debug("CommentsWorker initialized")
+        except ImportError as exp:
+            logger.warning(f"CommentsWorker not available: {exp}")
+
     @property
     def data(self):
         return self._navigator.data
@@ -84,6 +118,17 @@ class GPODataStore:
     @data.setter
     def data(self, value):
         self._navigator.data = value
+
+    @staticmethod
+    def _split_key_value_name(key_path):
+        """Split 'key\\value_name' into (key_path, value_name).
+
+        If key_path has only one component, returns (key_path, '').
+        """
+        parts = key_path.split('\\')
+        if len(parts) > 1 and parts[-1].strip():
+            return '\\'.join(parts[:-1]), parts[-1]
+        return key_path, ''
 
     def get_system_locale(self) -> str:
         """
@@ -401,12 +446,7 @@ class GPODataStore:
 
         # If no metadata and value_name not set, extract from key_path
         if not metadata_obj and not value_name:
-            key_parts = key_path.split('\\')
-            if len(key_parts) > 1:
-                potential_value_name = key_parts[-1]
-                if potential_value_name.strip():
-                    value_name = potential_value_name
-                    key_path = '\\'.join(key_parts[:-1])
+            key_path, value_name = self._split_key_value_name(key_path)
 
         # Call GPTWorker
         resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
@@ -416,18 +456,23 @@ class GPODataStore:
                 resolved_name_gpt, key_path, value_name, value_data, value_type, policy_type
             )
             if success:
-                if not self._update_gpo_version(resolved_name_gpt, policy_type):
-                    logger.warning("Policy set but GPT.INI version update failed for %s", resolved_name_gpt)
-            return success
+                new_version = self._update_gpo_version(resolved_name_gpt, policy_type)
+                try:
+                    if new_version < 0:
+                        logger.warning("Policy set but GPT.INI version update failed for %s", resolved_name_gpt)
+                    return new_version if success else -1
+                except TypeError:
+                    return -1 if not new_version else new_version
+            return -1
         except (OSError, IOError) as exp:
             logger.error(f"I/O error writing policy to {resolved_name_gpt}: {exp}")
-            return False
+            return -1
         except (ValueError, json.JSONDecodeError) as exp:
             logger.error(f"Data error setting policy value: {exp}")
-            return False
+            return -1
         except Exception as exp:
             logger.exception(f"Unexpected error setting policy value: {exp}")
-            return False
+            return -1
 
     def _extract_key_and_value_from_metadata(self, key_path, metadata_obj, heavy_meta=None):
         """Adjust key_path and value_name based on metadata header and heavy key metadata."""
@@ -518,13 +563,7 @@ class GPODataStore:
             policy_type = target
 
         key_path = AdmxParser.normalize_registry_key(path)
-        value_name = ''
-        key_parts = key_path.split('\\')
-        if len(key_parts) > 1:
-            potential_value_name = key_parts[-1]
-            if potential_value_name.strip():
-                value_name = potential_value_name
-                key_path = '\\'.join(key_parts[:-1])
+        key_path, value_name = self._split_key_value_name(key_path)
 
         resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
         logger.debug(f"Calling GPTWorker.delete_policy_value: name_gpt={name_gpt}, resolved={resolved_name_gpt}, key_path={key_path}, value_name={value_name}, policy_type={policy_type}")
@@ -533,9 +572,11 @@ class GPODataStore:
                 resolved_name_gpt, key_path, value_name, policy_type
             )
             if success:
-                if not self._update_gpo_version(resolved_name_gpt, policy_type):
+                new_version = self._update_gpo_version(resolved_name_gpt, policy_type)
+                if new_version < 0:
                     logger.warning("Policy deleted but GPT.INI version update failed for %s", resolved_name_gpt)
-            return success
+                return new_version if success else -1
+            return -1
         except (OSError, IOError) as exp:
             logger.error(f"I/O error deleting policy from {resolved_name_gpt}: {exp}")
             return False
@@ -545,6 +586,172 @@ class GPODataStore:
         except Exception as exp:
             logger.exception(f"Unexpected error deleting policy value: {exp}")
             return False
+
+    def get_policy_state(self, policy_path, name_gpt, target=None):
+        """Determine current policy state from Registry.pol + ADMX metadata.
+
+        Args:
+            policy_path: Path to policy in ADMX tree (e.g., 'Machine/categories/.../PolicyName')
+            name_gpt: GPO path (relative to sysvol). Required.
+            target: 'Machine' or 'User'. If None, defaults to 'Machine'.
+
+        Returns:
+            dict with 'state' and 'values' keys, or None on error
+        """
+        with self.lock:
+            if self.policy_state_manager is None:
+                logger.error("PolicyStateManager not available")
+                return None
+
+            policy_type = target or 'Machine'
+            policy_metadata = self.get(policy_path)
+            if not policy_metadata or not isinstance(policy_metadata, dict):
+                logger.error(f"Policy not found at path: {policy_path}")
+                return None
+
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            return self.policy_state_manager.determine_state(
+                resolved_name_gpt, policy_type, policy_metadata
+            )
+
+    def set_policy_state(self, policy_path, name_gpt, state, target=None):
+        """Atomically set policy state.
+
+        Args:
+            policy_path: Path to policy in ADMX tree
+            name_gpt: GPO path (relative to sysvol). Required.
+            state: 'enabled', 'disabled', or 'not_configured'
+            target: 'Machine' or 'User'. If None, defaults to 'Machine'.
+
+        Returns:
+            True if successful, False otherwise
+        """
+        with self.lock:
+            if self.policy_state_manager is None:
+                logger.error("PolicyStateManager not available")
+                return False
+
+            policy_type = target or 'Machine'
+            policy_metadata = self.get(policy_path)
+            if not policy_metadata or not isinstance(policy_metadata, dict):
+                logger.error(f"Policy not found at path: {policy_path}")
+                return False
+
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            success = self.policy_state_manager.set_state(
+                resolved_name_gpt, policy_type, policy_metadata, state
+            )
+            if success:
+                self._update_gpo_version(resolved_name_gpt, policy_type)
+            return success
+
+    def get_scripts(self, name_gpt, target, script_type):
+        """Read scripts from a GPO.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            script_type: 'scripts' or 'psscripts'
+
+        Returns:
+            dict {section: [{cmdLine, parameters}, ...]}
+        """
+        with self.lock:
+            if self.scripts_worker is None:
+                logger.error("ScriptsWorker not available")
+                return {}
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            return self.scripts_worker.read_scripts(resolved_name_gpt, target, script_type)
+
+    def set_scripts(self, name_gpt, target, script_type, scripts_data):
+        """Write scripts to a GPO.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            script_type: 'scripts' or 'psscripts'
+            scripts_data: dict {section: [{cmdLine, parameters}, ...]}
+
+        Returns:
+            True if successful, False otherwise
+        """
+        with self.lock:
+            if self.scripts_worker is None:
+                logger.error("ScriptsWorker not available")
+                return False
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            success = self.scripts_worker.write_scripts(
+                resolved_name_gpt, target, script_type, scripts_data
+            )
+            if success:
+                self._update_gpo_version(resolved_name_gpt, target)
+            return success
+
+    def get_comments(self, name_gpt, target, locale=''):
+        """Read comments from a GPO.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            locale: Locale for CMTL lookup
+
+        Returns:
+            dict {policy_name: comment_text}
+        """
+        with self.lock:
+            if self.comments_worker is None:
+                logger.error("CommentsWorker not available")
+                return {}
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            return self.comments_worker.read_comments(resolved_name_gpt, target, locale)
+
+    def save_comment(self, name_gpt, target, policy_ref, comment_text, namespace=''):
+        """Add or update a comment.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            policy_ref: Policy identifier
+            comment_text: Comment text
+            namespace: ADMX target namespace (optional)
+
+        Returns:
+            True if successful
+        """
+        with self.lock:
+            if self.comments_worker is None:
+                logger.error("CommentsWorker not available")
+                return False
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            result = self.comments_worker.save_comment(
+                resolved_name_gpt, target, policy_ref, comment_text, namespace
+            )
+            if result:
+                self._update_gpo_version(resolved_name_gpt, target)
+            return result
+
+    def delete_comment(self, name_gpt, target, policy_ref):
+        """Delete a comment.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            target: 'Machine' or 'User'
+            policy_ref: Policy name or 'ns:PolicyName'
+
+        Returns:
+            True if successful
+        """
+        with self.lock:
+            if self.comments_worker is None:
+                logger.error("CommentsWorker not available")
+                return False
+            resolved_name_gpt = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            result = self.comments_worker.delete_comment(
+                resolved_name_gpt, target, policy_ref
+            )
+            if result:
+                self._update_gpo_version(resolved_name_gpt, target)
+            return result
 
     def get_current_value(self, path, name_gpt, target=None):
         """Get current value from GPO policy file
@@ -581,15 +788,7 @@ class GPODataStore:
         key_path = AdmxParser.normalize_registry_key(path)
         # Use empty string for default value name
         value_name = ''
-        # Try to extract value_name from key_path (last component)
-        key_parts = key_path.split('\\')
-        if len(key_parts) > 1:
-            potential_value_name = key_parts[-1]
-            # Check if potential_value_name is not empty and not purely numeric?
-            if potential_value_name.strip():
-                value_name = potential_value_name
-                # Adjust key_path to parent
-                key_path = '\\'.join(key_parts[:-1])
+        key_path, value_name = self._split_key_value_name(key_path)
 
         try:
             result = self.gpt_worker.get_policy_value(
@@ -724,8 +923,11 @@ class GPODataStore:
             resolved = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
             result = self.gpprefs_worker.save_preference(resolved, target, pref_type, value, uid)
             if result.get('success'):
-                if not self._update_gpo_version(resolved, target or 'Machine'):
+                new_version = self._update_gpo_version(resolved, target or 'Machine')
+                if new_version < 0:
                     result['message'] += ' (WARNING: GPT.INI version not updated)'
+                else:
+                    result['new_version'] = new_version
             return result
         except json.JSONDecodeError as exp:
             logger.error(f"Invalid JSON in preference value: {exp}")
@@ -792,25 +994,71 @@ class GPODataStore:
     def _delete_preference_unlocked(self, gpo_guid, scope, pref_type, uid):
         if self.gpprefs_worker is None:
             logger.error("GPPrefsWorker not available")
-            return False
+            return {'success': False, 'new_version': -1}
 
         try:
             resolved_gpo_guid = utils.resolve_gpo_path(gpo_guid, self.sysvol_path)
             success = self.gpprefs_worker.delete_preference(resolved_gpo_guid, scope, pref_type, uid)
             if success:
-                if not self._update_gpo_version(resolved_gpo_guid, scope):
+                new_version = self._update_gpo_version(resolved_gpo_guid, scope)
+                if new_version < 0:
                     logger.warning("Preference deleted but GPT.INI version update failed for %s", resolved_gpo_guid)
-            return success
+                return {'success': True, 'new_version': new_version}
+            return {'success': False, 'new_version': -1}
         except (OSError, IOError) as exp:
             logger.error(f"I/O error deleting preference from {gpo_guid}: {exp}")
-            return False
+            return {'success': False, 'new_version': -1}
         except (ValueError, json.JSONDecodeError) as exp:
             logger.error(f"Data error deleting preference: {exp}")
-            return False
+            return {'success': False, 'new_version': -1}
         except Exception as exp:
             logger.exception(f"Unexpected error deleting preference: {exp}")
-            return False
+            return {'success': False, 'new_version': -1}
 
+    def get_display_name(self, name_gpt):
+        """Get displayName for a GPO, reading from GPT.INI if not cached."""
+        resolved = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+        with self.lock:
+            if resolved in self._gpo_display_names:
+                return self._gpo_display_names[resolved]
+        if self.gpt_worker:
+            try:
+                gpt_ini_path = self.gpt_worker._get_gpt_ini_path(resolved)
+                ini_data = self.gpt_worker._parse_gpt_ini(gpt_ini_path)
+                name = ini_data.get('displayName', '')
+                if name:
+                    with self.lock:
+                        self._gpo_display_names[resolved] = name
+                return name
+            except Exception as exp:
+                logger.debug("Could not read displayName from GPT.INI: %s", exp)
+        return ''
+
+    def set_display_name(self, name_gpt, display_name):
+        """Set displayName for a GPO in GPT.INI and cache.
+
+        Args:
+            name_gpt: GPO path (relative to sysvol)
+            display_name: New display name
+
+        Returns:
+            True if successful, False otherwise.
+        """
+        with self.lock:
+            resolved = utils.resolve_gpo_path(name_gpt, self.sysvol_path)
+            self._gpo_display_names[resolved] = display_name
+            if self.gpt_worker is None:
+                logger.warning("GPTWorker not available, cannot write displayName")
+                return False
+            try:
+                gpt_ini_path = self.gpt_worker._get_gpt_ini_path(resolved)
+                ini_data = self.gpt_worker._parse_gpt_ini(gpt_ini_path)
+                ini_data['displayName'] = display_name
+                self.gpt_worker._write_gpt_ini(gpt_ini_path, ini_data)
+                return True
+            except Exception as exp:
+                logger.warning("Failed to write displayName to GPT.INI: %s", exp)
+                return False
 
     def _update_gpo_version(self, gpo_path, scope='Machine'):
         """
@@ -821,17 +1069,20 @@ class GPODataStore:
             scope: 'Machine' or 'User'
 
         Returns:
-            True if version was updated successfully, False otherwise.
+            New version integer if updated successfully, -1 otherwise.
         """
         if self.gpt_worker is None:
             logger.warning("GPTWorker not available, cannot update GPT.INI version")
-            return False
+            return -1
         try:
-            self.gpt_worker.increment_gpo_version(gpo_path, scope)
-            return True
+            display_name = self.get_display_name(gpo_path)
+            new_version = self.gpt_worker.increment_gpo_version(
+                gpo_path, scope, display_name=display_name or None
+            )
+            return new_version
         except Exception as exp:
             logger.warning("Failed to update GPO version: %s", exp)
-            return False
+            return -1
 
 
 def list_of_dicts_to_dict(items, key_attr):
