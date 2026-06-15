@@ -25,6 +25,36 @@ function renderUnsupportedControl() {
     });
 }
 
+function renderListControl({ metadata = {}, policyPath = '', storagePath = '', isDisabled = true } = {}) {
+    return createElement('div', {
+        className: 'field__element',
+        children: [
+            createElement('input', {
+                attrs: {
+                    ...createCommonControlAttrs({
+                        metadata,
+                        policyPath,
+                        storagePath,
+                        type: 'list',
+                        isDisabled: false,
+                    }),
+                    type: 'hidden',
+                    value: '',
+                }
+            }),
+            createElement('button', {
+                className: ['btn', 'packages-control__btn-edit'],
+                attrs: {
+                    type: 'button',
+                    disabled: isDisabled ? 'disabled' : null,
+                    'data-storage-path': storagePath || policyPath,
+                },
+                text: 'Редактировать',
+            })
+        ]
+    });
+}
+
 function renderEnumControl({ metadata = {}, policyPath = '', storagePath = '', isDisabled = true } = {}) {
     const items = metadata.items ?? {};
     const selectedValue = getEnumDefaultValue(items, metadata.defaultItem);
@@ -129,7 +159,7 @@ function renderControlByType({ metadata = {}, policyPath = '', storagePath = '',
         case 'text':
             return renderTextControl({ metadata, policyPath, storagePath, isDisabled });
         case 'list':
-            return renderUnsupportedControl();
+            return renderListControl({ metadata, policyPath, storagePath, isDisabled });
         default:
             return renderUnsupportedControl();
     }
@@ -157,6 +187,7 @@ function renderAdmxControlRow({ metadata = {}, policyPath = '', storagePath = ''
         formatExplainText,
         createCommonControlAttrs,
         renderUnsupportedControl,
+        renderListControl,
         renderEnumControl,
         renderBooleanControl,
         renderDecimalControl,
