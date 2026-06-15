@@ -21,14 +21,14 @@ function buildTreeViewList(policyData = {}, policyName = '') {
                 {
                     title: t('policies.machine'),
                     type: 'folder',
-                    opened: true,
+                    opened: false,
                     icon: 'ico-computer',
                     help: t('policies.machineLevelPolicies'),
                     children: [
                         {
                             title: t('policies.adminTemplates'),
                             type: 'folder',
-                            opened: true,
+                            opened: false,
                             icon: 'ico-folder',
                             children: machineCategories,
                             help: t('policies.machineAdminTemplates'),

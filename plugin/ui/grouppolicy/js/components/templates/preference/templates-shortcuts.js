@@ -1,20 +1,23 @@
-define(['./preferences-view-template', './shortcuts/preferences-table-shortcuts', '../../../util/mainLocalStorage/shortcuts'], function(__dep0, __dep1, __dep2) {
-var { renderPreferencesTemplate } = __dep0;
-var { renderPreferencesTableShortcuts } = __dep1;
-var { getShortcutsFromLocalStorage } = __dep2;
+define(['../../../util/element-creator'], function(__dep0) {
+var { createElement } = __dep0;
 
 
 /**
  * Рендерит шаблон shortcuts
- * @returns {ElementCreator} - Элемент с шаблоном preferences для shortcuts
+ * @returns {ElementCreator} - Элемент с сообщением о том, что шаблон в процессе реализации
  */
-function renderShortcutsTemplate({ header } = {}) {
-    return renderPreferencesTemplate({
-        renderTable: renderPreferencesTableShortcuts,
-        getDataFromStorage: getShortcutsFromLocalStorage,
-        header,
-        name: 'shortcuts',
+function renderShortcutsTemplate() {
+    const shortcutsTemplate = createElement('div', {
+        className: 'gp__default-template',
+        children: [
+            createElement('div', {
+                className: 'default-template__message',
+                text: 'Шаблон shortcuts в процессе реализации'
+            })
+        ]
     });
+
+    return shortcutsTemplate;
 }
     return { renderShortcutsTemplate };
 });

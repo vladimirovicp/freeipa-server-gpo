@@ -64,6 +64,7 @@ define([
     var setFolderOpenedState = treeViewListModule.setFolderOpenedState;
     var createElement = elementCreatorModule.createElement;
     var initShortcutsStorage = shortcutsStorageModule.initShortcutsStorage;
+    var t = translationsModule.t;
 
     function createTreeViewState() {
         return {
@@ -78,6 +79,9 @@ define([
             treeItemElements: new WeakMap(),
             treeListItemElements: new WeakMap(),
             parentItems: new WeakMap(),
+            currentView: null,
+            pendingNavigation: null,
+            policyChangedModal: null,
 
             setWorkspace: function(workspace) {
                 this.workspace = workspace;
@@ -200,6 +204,7 @@ define([
                 this.currentViewCleanup = view && typeof view.cleanup === 'function'
                     ? view.cleanup
                     : null;
+                this.currentView = view || null;
             },
 
             isFolderItemSelected: function() {
@@ -385,6 +390,22 @@ define([
 
             navigateToNode: function(item, options) {
                 var config = options || {};
+
+                if (this.pendingNavigation) {
+                    return;
+                }
+
+                var currentView = this.currentView;
+                if (currentView && typeof currentView.hasUnsavedChanges === 'function' && currentView.hasUnsavedChanges()) {
+                    this.pendingNavigation = { item: item, options: config };
+                    this.showPolicyChangedModal();
+                    return;
+                }
+
+                this.proceedWithNavigation(item, config);
+            },
+
+            proceedWithNavigation: function(item, config) {
                 var treeItemElement = config.treeItemElement || null;
                 var openPath = config.openPath !== undefined ? config.openPath : true;
                 var openCurrentFolder = config.openCurrentFolder;
@@ -403,6 +424,52 @@ define([
 
                 var activeTreeItemElement = this.activateTreeItem(item, treeItemElement);
                 this.renderSelectedItem(item, activeTreeItemElement);
+            },
+
+            showPolicyChangedModal: function() {
+                if (this.policyChangedModal) {
+                    this.policyChangedModal.classList.add('active');
+                }
+            },
+
+            hidePolicyChangedModal: function() {
+                if (this.policyChangedModal) {
+                    this.policyChangedModal.classList.remove('active');
+                }
+            },
+
+            handlePolicyChangedYes: async function() {
+                this.hidePolicyChangedModal();
+
+                var currentView = this.currentView;
+                if (currentView && typeof currentView.applyChanges === 'function') {
+                    var success = await currentView.applyChanges();
+                    if (!success) {
+                        this.pendingNavigation = null;
+                        return;
+                    }
+                }
+
+                var nav = this.pendingNavigation;
+                this.pendingNavigation = null;
+                if (nav) {
+                    this.proceedWithNavigation(nav.item, nav.options);
+                }
+            },
+
+            handlePolicyChangedNo: function() {
+                this.hidePolicyChangedModal();
+
+                var currentView = this.currentView;
+                if (currentView && typeof currentView.cancelChanges === 'function') {
+                    currentView.cancelChanges();
+                }
+
+                var nav = this.pendingNavigation;
+                this.pendingNavigation = null;
+                if (nav) {
+                    this.proceedWithNavigation(nav.item, nav.options);
+                }
             },
 
             initializeSelection: function() {
@@ -473,6 +540,51 @@ define([
 
             var renderedMain = renderMain(container, treeViewState);
             renderFooter(container);
+
+            var policyChangedModal = createElement('div', {
+                className: 'policy-changed__modal',
+                children: [
+                    createElement('div', {
+                        className: 'policy-changed__modal-wrapper',
+                        children: [
+                            createElement('div', {
+                                className: 'policy-changed__modal-header',
+                                children: [
+                                    createElement('div', {
+                                        className: 'title',
+                                        text: t('policyChangedModal.title')
+                                    })
+                                ]
+                            }),
+                            createElement('div', {
+                                className: 'policy-changed__modal-content',
+                                text: t('policyChangedModal.message')
+                            }),
+                            createElement('div', {
+                                className: 'policy-changed__modal-footer',
+                                children: [
+                                    createElement('div', {
+                                        className: ['btn', 'btn-no'],
+                                        text: t('policyChangedModal.no')
+                                    }),
+                                    createElement('div', {
+                                        className: ['btn', 'btn-yes'],
+                                        text: t('policyChangedModal.yes')
+                                    })
+                                ]
+                            })
+                        ]
+                    })
+                ]
+            });
+
+            container.appendChild(policyChangedModal.getElement());
+            treeViewState.policyChangedModal = policyChangedModal.getElement();
+
+            var policyBtnNo = treeViewState.policyChangedModal.querySelector('.btn-no');
+            var policyBtnYes = treeViewState.policyChangedModal.querySelector('.btn-yes');
+            policyBtnNo.addEventListener('click', treeViewState.handlePolicyChangedNo.bind(treeViewState));
+            policyBtnYes.addEventListener('click', treeViewState.handlePolicyChangedYes.bind(treeViewState));
 
             resizable(
                 renderedMain.divider.getElement(),
